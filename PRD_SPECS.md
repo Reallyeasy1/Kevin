@@ -61,7 +61,7 @@ The MVP proves one claim:
 
 > A user or agent can purchase the most suitable AI inference for a task without the user creating an account, maintaining credits, or supplying an API key to the chosen inference seller.
 
-The MVP does **not** prove that API keys disappear from the entire supply chain. A seller may still use an upstream model provider credential behind its x402-protected endpoint. The product replaces the buyer's provider credentials and prepaid balance with a wallet-backed purchase.
+The MVP does **not** prove that API keys disappear from the entire supply chain. A seller may still use an upstream model provider credential behind its x402-protected endpoint, and the buyer holds one credential for prompt classification (DEC-014). The product replaces the buyer's per-seller provider credentials and prepaid balances with a wallet-backed purchase.
 
 ---
 
@@ -108,14 +108,16 @@ The product MUST NOT be described as merely “OpenRouter on XRPL.” Its intend
 | ID | Decision | Rationale |
 | --- | --- | --- |
 | DEC-001 | Build a 24-hour hackathon MVP, not a production V1. | A complete commercial loop is more valuable than broad unfinished scope. |
-| DEC-002 | Use a TypeScript-only web stack. | It reduces integration boundaries and aligns with `xrpl.js` and the available x402 tooling. |
+| DEC-002 | Use a TypeScript-only web stack. The buyer API is Fastify; the seller is Express. | It reduces integration boundaries and aligns with `xrpl.js`. `x402-xrpl` (0.3.x) ships Express middleware and declares Express as a peer dependency, so the seller uses Express to get a working 402 gate without a hand-written adapter. |
 | DEC-003 | Use XRPL Testnet. | The challenge repository recommends Testnet for prototyping and accepts Mainnet, Testnet, or Devnet. |
 | DEC-004 | Default to Testnet RLUSD, with asset metadata supplied by environment configuration. | It preserves stable denomination and follows the supplied RLUSD faucet path without hard-coding an issuer. |
 | DEC-005 | Support Testnet XRP through configuration, not a second code path. | It gives the team a demo fallback if RLUSD trust lines or facilitator support block progress. |
 | DEC-006 | Use a pre-funded agent demo wallet whose seed exists only in backend environment secrets. | It enables autonomous payment within the hackathon window. This is an explicit prototype exception, not the production custody design. |
 | DEC-007 | Remove the platform commission from the MVP. | A second payment adds atomicity and partial-failure problems without strengthening the core proof. |
 | DEC-008 | Use a curated registry with at least three purchasable inference offers. | Dynamic marketplace discovery is not required to prove the core loop. |
-| DEC-013 | Use the XRPL AI Hub at `https://xrpl-ai.org/` as the provider discovery source. | It is the live directory of x402 services on XRPL (1,700+ listed with XRP or RLUSD pricing), so discovering sellers there proves the agent is choosing from a real market rather than a private list. The hub does not publish a documented machine-readable API as of this draft, so discovery is an import step behind the `ProviderRegistry` adapter with the curated registry as fallback. |
+| DEC-013 | Use the XRPL AI Hub at `https://xrpl-ai.org/` as the intended provider discovery source, at P1. | It is the live directory of x402 services on XRPL (1,700+ listed with XRP or RLUSD pricing). Its listings are Mainnet services and it publishes no documented machine-readable API, so a Testnet import would yield no eligible offers. The MVP routes over the curated registry and presents the hub in the demo and README as the market the product draws from. |
+| DEC-014 | The buyer holds one provider credential for prompt classification. | Classification quality matters for the demo. The product thesis is scoped to purchasing inference without seller accounts, credits, or keys; it does not claim the buyer runs with zero provider credentials. The deterministic fallback (FR-011) keeps the flow demonstrable if that credential or model fails. |
+| DEC-015 | The MVP surface is a human web UI only. | An autonomous-agent client (MCP tool or OpenAI-compatible API) is deferred to P1. Section 6.2 is aspirational for the MVP. |
 | DEC-009 | Require at least one selected offer to complete a real x402/XRPL Testnet settlement and return real inference. | A simulated payment does not satisfy the challenge or product claim. |
 | DEC-010 | Use advertised price estimates for comparison and the selected seller's x402 requirement as the authoritative price. | The initial 402 response is the enforceable quote. |
 | DEC-011 | Never automatically buy a second offer after the first payment settles. | This prevents silent double-spend when paid execution fails. |
@@ -155,7 +157,7 @@ The MVP MUST NOT include:
 - arbitrary API or tool purchasing,
 - open provider self-registration,
 - automatic provider benchmarking,
-- daily or monthly treasury controls,
+- treasury controls beyond the single wallet spend cap in SEC-011,
 - browser extensions,
 - an OpenAI-compatible public API,
 - multi-agent wallets,
@@ -199,9 +201,11 @@ The demo passes only if all of the following happen in one uninterrupted flow:
 
 When I submit a task, I want the system to choose a suitable model within my budget so that I do not need to compare models, create provider accounts, or manage provider credits.
 
-### 6.2 Secondary user: autonomous software agent
+### 6.2 Secondary user: autonomous software agent (P1, not served by the MVP)
 
 When my workflow needs inference, I want to discover and purchase an appropriate service under a spending mandate so that the workflow can continue without preconfigured credentials for every seller.
+
+The MVP has no agent-facing client (DEC-015). The route and execute API in section 11 is the surface a P1 MCP tool or OpenAI-compatible adapter would wrap.
 
 ### 6.3 Supply-side user: inference seller
 
@@ -268,12 +272,14 @@ The agent MAY select any eligible offer within the mandate. A changed prompt, in
 7. Seller returns `402 Payment Required` without running inference.
 8. Router validates the payment requirement and stores the immutable quote.
 9. Policy engine confirms that the quote is within the request mandate.
-10. Payment adapter builds and signs the XRPL transaction.
-11. Router retries the request with the payment signature.
-12. Facilitator verifies and settles the signed transaction.
-13. Seller confirms payment and runs inference exactly once.
-14. Router verifies transaction success and returns the result.
+10. Payment adapter builds and signs the XRPL `Payment` once; the signed blob and its locally computed hash are persisted before anything is sent.
+11. Router resends the request with the `PAYMENT-SIGNATURE` header carrying the signed blob. This single call is the settlement trigger and the execution trigger.
+12. Seller passes the payload to the facilitator, which verifies it and submits the transaction to XRPL.
+13. Seller runs inference exactly once after the facilitator reports settlement, and returns the result with a `PAYMENT-RESPONSE` header carrying the transaction hash.
+14. Router independently confirms the hash is validated with `tesSUCCESS` on the ledger and only then marks the payment `SETTLED`.
 15. UI shows the answer and execution receipt.
+
+The buyer never observes settlement before execution; both happen inside the seller's handling of step 11. Any retry of step 11 resends the identical signed blob and never re-signs.
 
 ---
 
@@ -288,10 +294,11 @@ The client MUST accept:
 - a non-empty text prompt,
 - a routing mode,
 - a positive maximum cost expressed as a decimal string,
-- a maximum output token count.
+- an optional maximum output token count, forwarded to the seller as a generation limit. It does not affect filtering, scoring, or price; offers are priced per request.
 
 Acceptance criteria:
 
+- Every request carries the demo API key (SEC-011); requests without it return `UNAUTHORIZED` before any other processing.
 - Empty or whitespace-only prompts return `VALIDATION_ERROR`.
 - Prompts larger than 32,000 UTF-8 characters return `PROMPT_TOO_LARGE`.
 - `maxCost` is parsed with decimal arithmetic, never a JavaScript floating-point number.
@@ -372,9 +379,10 @@ Each offer MUST declare:
   "modelId": "provider/model-name",
   "endpoint": "https://seller.example/infer/fast-text-v1",
   "payTo": "rExampleAddress",
-  "network": "xrpl:testnet",
+  "network": "xrpl:<caip2-testnet-id>",
   "asset": {
     "code": "RLUSD",
+    "currencyHex": "524C555344000000000000000000000000000000",
     "issuer": "rConfiguredIssuer",
     "decimals": 6
   },
@@ -396,19 +404,20 @@ Each offer MUST declare:
 Acceptance criteria:
 
 - Invalid offer records fail application startup with a precise configuration error.
+- `network` is the CAIP-2 identifier the x402 scheme expects (`xrpl:<id>`; the Testnet id is read from the `x402-xrpl` network constants, not hand-typed). The literal `xrpl:testnet` is not a valid wire value.
+- Issued-currency codes longer than three characters, including RLUSD, are carried as the 40-hex currency code on the wire and shown as the human code only in the UI.
 - Disabled offers never enter the candidate set.
 - Seller destinations are allowlisted from the registry.
 - Secrets and upstream provider API keys are not stored in registry records.
 - The UI clearly labels registry prices as estimates until an x402 quote is obtained.
 
-#### FR-021: Provider discovery via XRPL AI Hub — P0
+#### FR-021: Provider discovery via XRPL AI Hub — P1
 
-The provider registry MUST be accessed through a `ProviderRegistry` interface. The MVP MUST ship two implementations behind it:
+The provider registry MUST be accessed through a `ProviderRegistry` interface (P0) so that a hub-backed implementation can be added without touching routing or UI. The MVP ships only `CuratedRegistry`, the version-controlled offer file from FR-020.
 
-- `CuratedRegistry`: the version-controlled offer file from FR-020.
-- `XrplAiHubRegistry`: offers discovered from the XRPL AI Hub directory at `https://xrpl-ai.org/`.
+MVP treatment of the hub (P0, documentation only): the README and the demo narrative reference `https://xrpl-ai.org/` as the live XRPL x402 market the router is designed to draw offers from, and state that the curated registry stands in for it on Testnet because hub listings are Mainnet services.
 
-Because the hub does not publish a documented JSON API as of this draft, `XrplAiHubRegistry` MAY be implemented as a build-time import: a script fetches or manually captures hub listings into `packages/config/hub-offers.json`, and the adapter loads that file. A live fetch at startup is acceptable if the hub exposes a stable endpoint; it MUST time out and fall back to the imported file.
+P1 implementation, `XrplAiHubRegistry`: because the hub publishes no documented JSON API as of this draft, it MAY be a build-time import into `packages/config/hub-offers.json`; a live fetch is acceptable if a stable endpoint appears and MUST time out and fall back to the imported file.
 
 Each discovered offer MUST be normalised into the FR-020 offer schema plus:
 
@@ -420,10 +429,11 @@ Each discovered offer MUST be normalised into the FR-020 offer schema plus:
 }
 ```
 
-Acceptance criteria:
+P1 acceptance criteria:
 
 - Discovered offers pass the same schema validation as curated offers; an invalid hub record is skipped with a logged reason, never a startup failure.
-- Only offers whose `network` is `xrpl:testnet` and whose `asset` matches the configured settlement asset (RLUSD by default, XRP as the DEC-005 fallback) enter the candidate set. Mainnet-only hub listings are excluded under `APP_ENV=hackathon`.
+- A hub-discovered seller never receives a prompt before the user has been shown its `source` and hub listing; unpaid quote requests to unvetted sellers are a privacy boundary (SEC-008 covers logs only).
+- Only offers whose `network` is the configured Testnet CAIP-2 id and whose `asset` matches the configured settlement asset (RLUSD by default, XRP as the DEC-005 fallback) enter the candidate set. Mainnet-only hub listings are excluded under `APP_ENV=hackathon`.
 - Discovered `endpoint` and `payTo` values become part of the allowlist only after validation (SEC-003). Raw hub data is never passed to `fetch` directly.
 - The merged candidate set is `CuratedRegistry ∪ XrplAiHubRegistry`, deduplicated by `endpoint`. Curated fields win on conflict.
 - The registry version hashes the merged set so identical inputs yield identical ordering (INV-010).
@@ -432,7 +442,7 @@ Acceptance criteria:
 
 Discovery does NOT change the payment path: a hub-discovered seller is paid through the identical x402 quote and settlement flow as a curated one (FR-030 onward).
 
-#### FR-022: Live hub refresh — P1
+#### FR-022: Live hub refresh — P2
 
 Refresh hub offers on a schedule or on demand without a redeploy, with the same validation as FR-021 and a stored registry version per refresh.
 
@@ -467,9 +477,12 @@ For candidate `c`:
 
 ```text
 quality(c)     = qualityByTask[taskType], falling back to general_chat
-cost(c)        = 1 - min(advertisedPrice / maxCost, 1)
-latency(c)     = 1 - min(p50LatencyMs / 10000, 1)
+cost(c)        = 1 - advertisedPrice(c) / maxEligiblePrice        (0 for the priciest eligible offer, approaching 1 for the cheapest)
+latency(c)     = 1 - p50LatencyMs(c) / maxEligibleLatencyMs       (same normalisation over the eligible set)
 reliability(c) = configured reliability
+
+maxEligiblePrice and maxEligibleLatencyMs are taken over the eligible set only.
+If the eligible set has one member, cost(c) = latency(c) = 1.
 
 score(c) =
   wQuality * quality(c)
@@ -487,6 +500,12 @@ Mode weights:
 | Cheapest | 0.15 | 0.65 | 0.10 | 0.10 |
 | Fastest | 0.15 | 0.15 | 0.60 | 0.10 |
 
+Mode guarantees, applied before the weighted score:
+
+- `Cheapest` MUST select the lowest advertised price among eligible offers; the score orders only offers that share that price.
+- `Fastest` MUST select the lowest `p50LatencyMs`; the score orders only ties.
+- `Quality` and `Balanced` use the weighted score alone.
+
 Tie-break order:
 
 1. lower advertised price,
@@ -496,6 +515,7 @@ Tie-break order:
 Acceptance criteria:
 
 - The same inputs always produce the same ranking.
+- Normalisation is relative to the eligible set, never to `maxCost`, so a generous budget does not flatten cost differences. A unit test asserts that with `maxCost` of `1.000000` and equal latencies, `Cheapest` still selects the lowest-priced offer.
 - Weights sum to exactly `1.00`.
 - Scores are stored to four decimal places.
 - Unit tests cover every mode and tie-break rule.
@@ -534,7 +554,8 @@ The seller MUST NOT invoke the upstream model before payment verification.
 Acceptance criteria:
 
 - A `200` response before payment is treated as seller misconfiguration and is not presented as a paid execution.
-- The payment requirement is stored immutably with its invoice identifier and expiry.
+- The payment requirement is stored immutably with its invoice identifier (`extra.invoiceId`), `maxTimeoutSeconds`, and the resulting expiry.
+- The prompt is sent only to sellers present in the curated registry. Because the unpaid request carries the full prompt, registry membership is the trust boundary for prompt disclosure.
 - The quote amount is treated as authoritative over the registry estimate.
 - The request body is sent only to the currently selected seller, not to every candidate.
 
@@ -542,10 +563,11 @@ Acceptance criteria:
 
 Before signing, the router MUST validate:
 
-- supported x402 scheme,
-- XRPL Testnet network identifier,
-- configured asset code and issuer,
-- exact seller destination matching the registry,
+- scheme is `exact`,
+- `network` equals the configured Testnet CAIP-2 identifier,
+- `asset` equals `XRP` or the configured 40-hex currency code, and `extra.issuer` equals the configured issuer for issued currencies,
+- `payTo` exactly matches the registry destination,
+- `extra.invoiceId` present and not previously seen,
 - positive amount,
 - amount less than or equal to `maxCost`,
 - invoice identifier present,
@@ -589,14 +611,17 @@ Acceptance criteria:
 
 The payment adapter MUST build a payer-signed XRPL `Payment` transaction that exactly matches the validated x402 requirement.
 
-The transaction MUST include the required invoice binding through `InvoiceID` or memo data as specified by the seller/facilitator requirement. It MUST use a bounded `LastLedgerSequence` and MUST NOT enable partial payment.
+Invoice binding uses the `InvoiceID` field set to the SHA-256 of `extra.invoiceId` (the scheme's Method B). The memo method is not used. The transaction MUST carry a bounded `LastLedgerSequence`, the scheme's default `SourceTag`, and MUST NOT set the partial-payment flag or any `Paths`.
+
+Signing is serialised per wallet: one signing operation at a time, so two concurrent routes cannot take consecutive `Sequence` numbers where the second depends on a seller forwarding the first. Tickets are the P1 upgrade if throughput matters.
 
 Acceptance criteria:
 
 - Wallet seed is read from an environment secret only at signing time.
 - Wallet seed is never returned, logged, serialized, or persisted.
 - Destination, amount, asset, issuer, invoice binding, and network are revalidated immediately before signing.
-- The signed transaction blob is sent only to the selected x402 seller/facilitator flow.
+- The signed blob and its locally computed transaction hash are persisted in the Payment record before the paid request is sent, so a lost response can be resolved by hash.
+- The signed transaction blob is sent only in the `PAYMENT-SIGNATURE` header of the paid request to the selected seller.
 
 #### FR-071: Idempotent purchase — P0
 
@@ -612,9 +637,9 @@ UNIQUE(transaction_hash) where transaction_hash is not null
 
 Acceptance criteria:
 
-- Concurrent execute calls for one route result in one payment submission.
+- Concurrent execute calls for one route result in one signed transaction and one paid request in flight.
 - A repeated execute call returns the existing execution or its current state.
-- If transaction submission times out, the system checks the known transaction hash or signed transaction outcome before any resubmission.
+- A quote is signed at most once. If the paid request times out or its response is lost, the system first queries the ledger for the persisted hash; if absent and `LastLedgerSequence` has not passed, it MAY resend the identical blob; it never produces a new signature for the same quote.
 - The system never creates a new transaction merely because the HTTP response was lost.
 
 #### FR-072: Settlement verification — P0
@@ -748,29 +773,36 @@ stateDiagram-v2
     QUOTING --> FAILED
     QUOTED --> POLICY_APPROVED
     QUOTED --> POLICY_REJECTED
-    POLICY_APPROVED --> PAYMENT_PENDING
-    PAYMENT_PENDING --> SETTLED
-    PAYMENT_PENDING --> PAYMENT_FAILED
-    SETTLED --> EXECUTING
-    EXECUTING --> SUCCEEDED
-    EXECUTING --> PAID_EXECUTION_FAILED
+    POLICY_APPROVED --> SIGNED
+    SIGNED --> PAID_REQUEST_SENT
+    PAID_REQUEST_SENT --> VERIFYING
+    PAID_REQUEST_SENT --> PAYMENT_FAILED
+    PAID_REQUEST_SENT --> OUTCOME_UNKNOWN
+    OUTCOME_UNKNOWN --> VERIFYING
+    OUTCOME_UNKNOWN --> PAYMENT_FAILED
+    VERIFYING --> SUCCEEDED
+    VERIFYING --> PAID_EXECUTION_FAILED
+    VERIFYING --> PAYMENT_FAILED
 ```
+
+`PAID_REQUEST_SENT` covers the seller call that both settles and executes. `VERIFYING` is the buyer's independent ledger check of the hash from `PAYMENT-RESPONSE` (or the locally computed hash if the response was lost). `SUCCEEDED` requires a validated `tesSUCCESS` and a model result; `PAID_EXECUTION_FAILED` requires a validated `tesSUCCESS` and no result. If the ledger shows no such transaction after `LastLedgerSequence` has passed, the route is `PAYMENT_FAILED` and no money moved.
 
 ### 9.2 Payment states
 
 ```text
 NOT_CREATED
 -> CREATED
--> SIGNED
--> SUBMITTED
--> VALIDATED_SUCCESS
+-> SIGNED            (blob + hash persisted; the only signing event)
+-> SENT              (blob handed to the seller in PAYMENT-SIGNATURE)
+-> SETTLED           (buyer saw tesSUCCESS in a validated ledger)
 
 Failure branches:
 CREATED -> POLICY_REJECTED
-SIGNED -> SUBMISSION_FAILED
-SUBMITTED -> VALIDATED_FAILED
-SUBMITTED -> OUTCOME_UNKNOWN
+SENT    -> VALIDATED_FAILED   (tec/tef/tem result, or expired past LastLedgerSequence with no ledger entry)
+SENT    -> OUTCOME_UNKNOWN    (seller/facilitator response lost; resolve by hash, never re-sign)
 ```
+
+The facilitator, not the buyer, submits to XRPL. The buyer's replay protection is the account `Sequence` inside the signed blob: resending the same blob cannot apply twice, and a fresh signature is never produced for an existing quote.
 
 ### 9.3 Hard invariants
 
@@ -786,6 +818,8 @@ SUBMITTED -> OUTCOME_UNKNOWN
 | INV-008 | The MVP sends no platform commission payment. |
 | INV-009 | Only a validated successful XRPL result can produce `SETTLED`. |
 | INV-010 | The same routing inputs and registry version produce the same candidate ordering. |
+| INV-011 | A quote is signed at most once. Retries resend the identical signed blob; a new signature for an existing quote is never produced. |
+| INV-012 | The buyer API never signs without a valid demo API key and an unexhausted hourly spend cap. |
 
 ---
 
@@ -793,7 +827,7 @@ SUBMITTED -> OUTCOME_UNKNOWN
 
 ```mermaid
 flowchart TD
-    UI["Next.js web client"] --> API["Fastify routing API"]
+    UI["Next.js web client"] --> API["Fastify buyer API"]
     API --> CLASS["Classifier"]
     API --> REG["Curated offer registry"]
     API --> POLICY["Policy engine"]
@@ -811,7 +845,7 @@ flowchart TD
 apps/
   web/                 Next.js UI
   api/                 Fastify router and buyer
-  seller/              x402-protected inference seller
+  seller/              x402-protected inference seller (Express + x402-xrpl)
 packages/
   contracts/           shared schemas and API types
   routing/             classifier, filtering, scoring
@@ -834,7 +868,8 @@ The seller may run in the same process during local development, but buyer and s
 | Runtime | Node.js 20 or later |
 | Package manager | pnpm |
 | Frontend | Next.js, React, Tailwind CSS |
-| API | Fastify |
+| Buyer API | Fastify |
+| Seller | Express, using the `x402-xrpl` middleware (DEC-002) |
 | Validation | Zod or equivalent runtime schema validation |
 | Database | PostgreSQL with Prisma |
 | XRPL | `xrpl.js` behind a local adapter |
@@ -902,9 +937,13 @@ Request:
   "prompt": "Implement Dijkstra's algorithm and explain its complexity.",
   "mode": "balanced",
   "maxCost": "0.020000",
-  "asset": "RLUSD",
   "maxOutputTokens": 1200
 }
+```
+
+The settlement asset is server configuration (DEC-004, DEC-005) and is not a request field. Requests carry `Authorization: Bearer <demo api key>` (SEC-011).
+
+```json
 ```
 
 Response `201`:
@@ -936,7 +975,7 @@ Response `201`:
   "candidates": [],
   "mandate": {
     "maxCost": "0.020000",
-    "network": "xrpl:testnet",
+    "network": "xrpl:<caip2-testnet-id>",
     "asset": "RLUSD",
     "expiresAt": "2026-09-04T18:05:00Z"
   }
@@ -998,7 +1037,7 @@ Returns only:
 ```json
 {
   "address": "rExample",
-  "network": "xrpl:testnet",
+  "network": "xrpl:<caip2-testnet-id>",
   "balances": [
     { "asset": "RLUSD", "amount": "5.000000" },
     { "asset": "XRP", "amount": "25.000000" }
@@ -1035,7 +1074,7 @@ Paid retry:
 | `mode` | enum | balanced, quality, cheapest, fastest |
 | `maxCost` | decimal | Stored as fixed precision |
 | `assetCode` | string | RLUSD or XRP |
-| `network` | string | `xrpl:testnet` |
+| `network` | string | Configured Testnet CAIP-2 id |
 | `registryVersion` | string | Hash or version of offers used |
 | `taskProfile` | JSON | Schema-validated structured output |
 | `selectedOfferId` | string/null | Immutable after quote acceptance |
@@ -1174,8 +1213,9 @@ Example:
 | Quote above budget | Reject quote; try next unpaid offer | Yes |
 | Insufficient balance | Stop before signing | No |
 | Signer unavailable | Stop; payment not submitted | No |
-| Submission rejected | Record failure; resolve known hash if any | Only outcome resolution |
-| Submission outcome unknown | Query ledger/facilitator using known identifiers | Never create a new payment automatically |
+| Seller or facilitator rejects the paid request | Record failure; check the persisted hash on ledger before marking money as not moved | Only outcome resolution |
+| Paid request response lost | Query the ledger for the persisted hash; if absent and `LastLedgerSequence` not passed, MAY resend the identical blob | Never sign again |
+| Facilitator (best-effort Testnet service) is down | Route ends `PAYMENT_FAILED` if the hash never appears on ledger; UI says no money moved | No |
 | Ledger validates failure | Mark payment failed | No |
 | Seller times out after settlement | Mark `PAID_EXECUTION_FAILED`; retry same entitlement only | Same seller only |
 | Upstream model fails after settlement | Mark `PAID_EXECUTION_FAILED` | Same seller only |
@@ -1214,6 +1254,7 @@ The MVP MUST NOT be described as production non-custodial architecture.
 | SEC-008 | Do not log full prompts or model responses by default. |
 | SEC-009 | Do not expose raw signed transactions through public APIs. |
 | SEC-010 | Reject Mainnet configuration when `APP_ENV=hackathon`. |
+| SEC-011 | The buyer API requires a demo API key on every route and execute call, and enforces a configured cap on total wallet spend per rolling hour. The deployed demo is otherwise an unauthenticated endpoint that can drain the agent wallet. Exceeding the cap returns `SPEND_CAP_REACHED` before signing. |
 
 ### 15.3 Data retention
 
@@ -1470,7 +1511,7 @@ Nothing outranks the first real end-to-end paid inference.
 | Hours 0–2 | Repository, runtime config, Testnet wallets, asset trust lines, health endpoints | Buyer and seller start; balances visible |
 | Hours 2–5 | One x402-protected seller offer | Unpaid request returns valid 402; no inference runs |
 | Hours 5–8 | Buyer payment adapter | One real Testnet payment validates and paid retry succeeds |
-| Hours 8–11 | Three-offer registry, XRPL AI Hub import (FR-021), classifier, filtering, scoring | Deterministic selected offer with unit tests; candidate table shows `source` per offer |
+| Hours 8–11 | Three-offer registry behind `ProviderRegistry`, classifier, filtering, scoring | Deterministic selected offer with unit tests, including the Cheapest-mode guarantee |
 | Hours 11–14 | Route and execute APIs with state persistence | Full API flow works without UI |
 | Hours 14–17 | Main web experience and execution timeline | User can complete the full flow visually |
 | Hours 17–20 | Idempotency, quote validation, failure states | Duplicate execution and invalid quote tests pass |
@@ -1485,7 +1526,7 @@ Cut in this order:
 2. token-level response streaming,
 3. custom mode weights,
 4. wallet analytics,
-5. live hub refresh (FR-022); the FR-021 hub import stays, falling back to the curated registry if the import is not ready,
+5. any P1 hub discovery work that crept in (FR-021),
 6. provider health dashboards,
 7. any second settlement asset.
 
@@ -1635,8 +1676,11 @@ Potential future revenue:
 | Duplicate payment from retries | Critical | Unique constraints, state lock, invoice binding, resolve unknown outcomes before retry |
 | Demo wallet is mistaken for production custody | Medium | Testnet labeling and explicit prototype boundary in UI and README |
 | Three offers share one upstream aggregator | Medium | Disclose actual supply path; do not claim provider decentralization not demonstrated |
-| XRPL AI Hub has no documented discovery API, or its listings are Mainnet-only | Medium | FR-021 is a build-time import with the curated registry as fallback; hub listings that are not Testnet or not in the configured asset are excluded, and the demo still shows `source` labels for whatever hub offers pass validation |
+| Judges see "OpenRouter on XRPL" because the MVP has no agent client and routing rests on curated quality numbers | High | Demo narration leads with request-scoped mandate, inspectable decision, and direct seller settlement; README names the hub as the target market and the MCP client as P1; quality values are labelled as curated seed data |
+| T54 Testnet facilitator (`xrpl-facilitator-testnet.t54.ai`, best-effort) is unavailable during judging | High | Preflight health check before the demo; recorded transaction hash and explorer screenshot as fallback evidence; never fake a settlement |
+| `x402-xrpl` 0.3.x changes or breaks (early-stage, Express-only) | High | Pin the exact version; seller is Express so the middleware is used as shipped; `PaymentClient` adapter isolates the buyer |
 | Live dependencies fail during judging | High | Preflight health check, recorded transaction evidence, and a clearly labeled replay mode that does not pretend to be live |
+| Deployed demo URL is discovered and used to drain the Testnet wallet | Medium | SEC-011 demo API key and hourly spend cap; wallet holds only what the demo needs |
 
 ---
 
@@ -1649,7 +1693,8 @@ Potential future revenue:
 | OQ-003 | Which quality score source will be shown: curated team estimates or a named benchmark? | Before demo copy is finalized |
 | OQ-004 | Will P1 use Xaman, Crossmark, GemWallet, Reown, or an Open Wallet Standard implementation? | Post-hackathon architecture |
 | OQ-005 | Should a future fee be seller-funded or buyer-funded? | Before commission design |
-| OQ-006 | Resolved by DEC-013: the XRPL AI Hub (`https://xrpl-ai.org/`) is the discovery source. Remaining question: does the hub expose a stable machine-readable feed, or does FR-021 stay a build-time import? | Before the FR-021 import script is written |
+| OQ-006 | Resolved by DEC-013: the XRPL AI Hub (`https://xrpl-ai.org/`) is the P1 discovery source. Remaining question: does the hub expose a stable machine-readable feed, or does FR-021 stay a build-time import? | P1 planning |
+| OQ-007 | Exact CAIP-2 Testnet identifier and RLUSD Testnet issuer address as published by `x402-xrpl` 0.3.x and the T54 Testnet facilitator | Hours 0–2, before the first 402 |
 
 ---
 
@@ -1662,7 +1707,10 @@ This specification is grounded in:
 - [XRPL agentic payments with x402 guide](https://xrpl.org/docs/agents/agentic-payments-x402), which describes the XRPL agent payment path.
 - [T54 XRPL x402 facilitator documentation](https://docs.t54.ai/docs/xrpl/x402-facilitator), which specifies payer-signed XRPL Payment transactions, exact matching, invoice binding, and settlement through the facilitator.
 - [x402 protocol documentation](https://docs.x402.org/introduction), which defines accountless HTTP-native payment-gated resource access.
-- [XRPL AI Hub](https://xrpl-ai.org/), the live directory and settlement index of x402 services on XRPL priced in XRP or RLUSD, used as the FR-021 provider discovery source. It points to the `x402-xrpl` npm package and the t54 facilitator docs at `https://xrpl-x402.t54.ai/docs/overview`. No public discovery API was documented when this draft was written.
+- [XRPL AI Hub](https://xrpl-ai.org/), the live directory and settlement index of x402 services on XRPL priced in XRP or RLUSD, the P1 provider discovery source (FR-021). Its listings are Mainnet services and no public discovery API was documented when this draft was written.
+- [T54 XRPL exact scheme](https://xrpl-x402.t54.ai/docs/xrpl-scheme), which fixes the wire details used in FR-020, FR-051, and FR-070: CAIP-2 `network`, `asset` as `XRP` or 40-hex currency code, `extra.invoiceId`, `extra.issuer`, `maxTimeoutSeconds`, `PAYMENT-SIGNATURE` request header with `signedTxBlob`, facilitator-side submission, `InvoiceID = SHA-256(invoiceId)` binding, mandatory `LastLedgerSequence`.
+- `x402-xrpl` npm package 0.3.2 (checked 5 September 2026): depends on `xrpl` 4.5, peer-depends on Express 4+. Pin it.
+- Public Testnet facilitator `https://xrpl-facilitator-testnet.t54.ai`, operated by T54 on a best-effort basis per the xrpl.org agentic payments guide.
 
 External packages and network metadata are evolving. The implementation MUST pin package versions and obtain asset issuer, network, facilitator, explorer, and wallet values from validated runtime configuration rather than copying sample values from this document.
 
