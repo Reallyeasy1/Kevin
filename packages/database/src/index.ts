@@ -1,2 +1,10 @@
-// @subbuddy/database: owned by the database agent. Placeholder export so the package resolves.
-export const PACKAGE_NAME = '@subbuddy/database' as const;
+export { createDb, type Db } from './client.js';
+export * from './repository.js';
+export { createSpendLedger, type SpendLedger } from './spend-ledger.js';
+export {
+  Eligibility,
+  ExecutionStatus,
+  PaymentStatus,
+  RouteMode,
+  RouteState,
+} from './generated/client.js';

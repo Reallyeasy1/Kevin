@@ -17,6 +17,17 @@ export type DecimalString = z.infer<typeof DecimalString>;
 export const XrplNetworkId = z.string().regex(/^xrpl:\d+$/, 'CAIP-2 xrpl:<id> required');
 export type XrplNetworkId = z.infer<typeof XrplNetworkId>;
 
+/**
+ * CAIP-2 ids as defined by x402-xrpl 0.3.x (`XRPLNetworkId = "xrpl:0" | "xrpl:1" | "xrpl:2"`; xrpl:1 resolves to
+ * s.altnet.rippletest.net). The SDK exports the type only, so this mirror is the runtime source of truth (FR-020).
+ * packages/payments must assert it against the SDK type so drift fails typecheck (the SDK stays there, PRD §10.3).
+ */
+export const XRPL_NETWORKS = { mainnet: 'xrpl:0', testnet: 'xrpl:1', devnet: 'xrpl:2' } as const;
+
+/** Strictly positive decimal string, e.g. maxCost (FR-001). */
+export const PositiveDecimalString = DecimalString.refine((v) => /[1-9]/.test(v), 'must be > 0');
+export type PositiveDecimalString = z.infer<typeof PositiveDecimalString>;
+
 /** Classic XRPL address. */
 export const XrplAddress = z
   .string()
@@ -349,6 +360,8 @@ export interface Classifier {
 
 export interface ProviderRegistry {
   listActiveOffers(): Promise<InferenceOffer[]>;
+  /** Hash of the offer set behind listActiveOffers(); stored on every route (INV-010, §12.1). */
+  readonly registryVersion: string;
 }
 
 export interface PaymentClient {
@@ -431,3 +444,117 @@ export const Receipt = z.object({
   updatedAt: IsoTimestamp,
 });
 export type Receipt = z.infer<typeof Receipt>;
+
+// ---------------------------------------------------------------------------
+// Buyer API wire contract (§11). Every schema here is a public shape: z.object strips unknown keys, so
+// parsing a server-side record through these drops signedTxBlob and other internals (SEC-009).
+// ---------------------------------------------------------------------------
+
+/** FR-001: prompts above this return PROMPT_TOO_LARGE (the API maps the `too_big` issue on `prompt`). */
+export const PROMPT_MAX_CHARS = 32_000;
+
+export const RouteRequest = z.object({
+  prompt: z
+    .string()
+    .max(PROMPT_MAX_CHARS)
+    .refine((p) => p.trim().length > 0, 'prompt must not be empty'),
+  mode: RoutingMode,
+  maxCost: PositiveDecimalString,
+  maxOutputTokens: z.number().int().positive().optional(),
+});
+export type RouteRequest = z.infer<typeof RouteRequest>;
+
+/** FR-002: request-scoped authorization the policy engine checks before signing. Server-side. */
+export const Mandate = z.object({
+  promptHash: Sha256Hex,
+  maxCost: PositiveDecimalString,
+  asset: SettlementAssetCode,
+  network: XrplNetworkId,
+  allowedSellerIds: z.array(z.string().min(1)).min(1),
+  expiresAt: IsoTimestamp,
+});
+export type Mandate = z.infer<typeof Mandate>;
+
+/** The public subset of the mandate echoed in POST /v1/routes (§11.2). */
+export const PublicMandate = Mandate.pick({
+  maxCost: true,
+  network: true,
+  asset: true,
+  expiresAt: true,
+});
+export type PublicMandate = z.infer<typeof PublicMandate>;
+
+export const SelectedOffer = z.object({
+  offerId: z.string().min(1),
+  sellerName: z.string().min(1),
+  modelId: z.string().min(1),
+  /** Four decimal places (FR-040). */
+  score: DecimalString,
+  estimatedCost: DecimalString,
+  quotedCost: DecimalString.nullable(),
+  asset: SettlementAssetCode,
+  /** Generated from structured score deltas, never chain-of-thought (FR-041, DEC-012). */
+  reason: z.string().min(1),
+});
+export type SelectedOffer = z.infer<typeof SelectedOffer>;
+
+export const RouteResponse = z.object({
+  routeId: z.string().min(1),
+  state: RouteState,
+  expiresAt: IsoTimestamp,
+  taskProfile: TaskProfile,
+  selected: SelectedOffer.nullable(),
+  candidates: z.array(RouteCandidateView),
+  mandate: PublicMandate,
+});
+export type RouteResponse = z.infer<typeof RouteResponse>;
+
+export const ExecuteRequest = z.object({ prompt: z.string().min(1) });
+export type ExecuteRequest = z.infer<typeof ExecuteRequest>;
+
+export const ExecuteResponse = z.object({
+  routeId: z.string().min(1),
+  state: RouteState,
+  statusUrl: z.string().min(1),
+  eventsUrl: z.string().min(1),
+});
+export type ExecuteResponse = z.infer<typeof ExecuteResponse>;
+
+export const ROUTE_EVENT_TYPES = [
+  'route.state_changed',
+  'payment.submitted',
+  'payment.validated',
+  'execution.started',
+  'execution.completed',
+  'route.failed',
+] as const;
+export const RouteEventType = z.enum(ROUTE_EVENT_TYPES);
+export type RouteEventType = z.infer<typeof RouteEventType>;
+
+/** SSE payload (§11.5). The payload is public: no prompt, response body, seed, or signed blob (§19). */
+export const RouteEvent = z.object({
+  eventId: z.string().min(1),
+  routeId: z.string().min(1),
+  type: RouteEventType,
+  timestamp: IsoTimestamp,
+  state: RouteState,
+  payload: z.record(z.string(), z.unknown()).default({}),
+});
+export type RouteEvent = z.infer<typeof RouteEvent>;
+
+/** GET /v1/offers (§11.6). Offer records carry no secrets by construction (FR-020). */
+export const OffersResponse = z.object({
+  registryVersion: z.string().min(1),
+  offers: z.array(InferenceOffer),
+});
+export type OffersResponse = z.infer<typeof OffersResponse>;
+
+/** GET /v1/wallet (§11.7). Address and balances only; never the seed (INV-007). */
+export const WalletResponse = z.object({
+  address: XrplAddress,
+  network: XrplNetworkId,
+  balances: z.array(z.object({ asset: SettlementAssetCode, amount: DecimalString })),
+});
+export type WalletResponse = z.infer<typeof WalletResponse>;
+
+export * from './state-machine.js';

@@ -3,8 +3,12 @@ import {
   DecimalString,
   FALLBACK_TASK_PROFILE,
   InferenceOffer,
+  PROMPT_MAX_CHARS,
+  PaymentReceipt,
   PaymentRequirement,
+  RouteRequest,
   TaskProfile,
+  XRPL_NETWORKS,
   XrplNetworkId,
 } from './index.js';
 
@@ -77,5 +81,38 @@ describe('contracts', () => {
     expect(PaymentRequirement.safeParse(req).success).toBe(true);
     expect(PaymentRequirement.safeParse({ ...req, scheme: 'upto' }).success).toBe(false);
     expect(PaymentRequirement.safeParse({ ...req, invoiceId: '' }).success).toBe(false);
+  });
+
+  it('validates the route request per FR-001 and distinguishes too-large prompts', () => {
+    const base = { prompt: 'hi', mode: 'balanced', maxCost: '0.020000' };
+    expect(RouteRequest.safeParse(base).success).toBe(true);
+    expect(RouteRequest.safeParse({ ...base, prompt: '   ' }).success).toBe(false);
+    expect(RouteRequest.safeParse({ ...base, maxCost: '0.000' }).success).toBe(false);
+    expect(RouteRequest.safeParse({ ...base, maxCost: 0.02 }).success).toBe(false);
+    const big = RouteRequest.safeParse({ ...base, prompt: 'x'.repeat(PROMPT_MAX_CHARS + 1) });
+    expect(big.success).toBe(false);
+    expect(big.error?.issues[0]?.code).toBe('too_big');
+  });
+
+  it('strips signed transaction blobs from public receipt shapes (SEC-009)', () => {
+    const parsed = PaymentReceipt.parse({
+      status: 'SENT',
+      payerAddress: null,
+      destination: null,
+      amount: null,
+      assetCode: null,
+      transactionHash: 'ABC',
+      explorerUrl: null,
+      ledgerIndex: null,
+      validatedAt: null,
+      failureCode: null,
+      signedTxBlob: '1200002280000000...',
+    });
+    expect(parsed).not.toHaveProperty('signedTxBlob');
+  });
+
+  it('pins the Testnet CAIP-2 id used on the x402 wire', () => {
+    expect(XRPL_NETWORKS.testnet).toBe('xrpl:1');
+    expect(XrplNetworkId.safeParse(XRPL_NETWORKS.mainnet).success).toBe(true);
   });
 });

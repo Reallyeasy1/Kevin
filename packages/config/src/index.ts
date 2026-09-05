@@ -1,2 +1,3 @@
-// @subbuddy/config: owned by the config agent. Placeholder export so the package resolves.
-export const PACKAGE_NAME = '@subbuddy/config' as const;
+// @subbuddy/config: runtime env validation (NFR-009, SEC-010) and the curated offer registry (FR-020).
+export * from './env.js';
+export * from './registry.js';

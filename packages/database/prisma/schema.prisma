@@ -1,0 +1,164 @@
+// PRD §12 data model. Money columns are Decimal (INV-006); uniqueness per FR-071 / SEC-007.
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RouteMode {
+  balanced
+  quality
+  cheapest
+  fastest
+}
+
+// PRD §9.1
+enum RouteState {
+  CLASSIFYING
+  ROUTING
+  NO_ELIGIBLE_OFFER
+  QUOTING
+  QUOTED
+  POLICY_APPROVED
+  POLICY_REJECTED
+  SIGNED
+  PAID_REQUEST_SENT
+  OUTCOME_UNKNOWN
+  VERIFYING
+  SUCCEEDED
+  PAID_EXECUTION_FAILED
+  PAYMENT_FAILED
+  FAILED
+}
+
+enum Eligibility {
+  eligible
+  ineligible
+  selected
+  quote_rejected
+  not_quoted
+}
+
+// PRD §9.2
+enum PaymentStatus {
+  CREATED
+  POLICY_REJECTED
+  SIGNED
+  SENT
+  SETTLED
+  VALIDATED_FAILED
+  OUTCOME_UNKNOWN
+}
+
+enum ExecutionStatus {
+  pending
+  running
+  succeeded
+  failed
+}
+
+model Route {
+  id              String     @id @default(uuid())
+  promptHash      String
+  mode            RouteMode
+  maxCost         Decimal    @db.Decimal(20, 6)
+  assetCode       String
+  network         String
+  registryVersion String
+  taskProfile     Json?
+  selectedOfferId String?
+  state           RouteState @default(CLASSIFYING)
+  expiresAt       DateTime
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  candidates RouteCandidate[]
+  quote      Quote?
+  payment    Payment?
+  execution  Execution?
+}
+
+model RouteCandidate {
+  routeId          String
+  offerId          String
+  eligibility      Eligibility
+  rejectionReasons String[]
+  qualityScore     Decimal     @db.Decimal(7, 6)
+  costScore        Decimal     @db.Decimal(7, 6)
+  latencyScore     Decimal     @db.Decimal(7, 6)
+  reliabilityScore Decimal     @db.Decimal(7, 6)
+  finalScore       Decimal     @db.Decimal(7, 6)
+  estimatedCost    Decimal     @db.Decimal(20, 6)
+
+  route Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@id([routeId, offerId])
+}
+
+model Quote {
+  id                 String   @id @default(uuid())
+  routeId            String   @unique
+  invoiceId          String   @unique
+  sellerId           String
+  offerId            String
+  destination        String
+  amount             Decimal  @db.Decimal(20, 6)
+  assetCode          String
+  assetIssuer        String?
+  network            String
+  rawRequirementHash String
+  expiresAt          DateTime
+  createdAt          DateTime @default(now())
+
+  route   Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  payment Payment?
+}
+
+// FR-071: UNIQUE(route_id), UNIQUE(invoice_id), UNIQUE(transaction_hash) — Postgres unique ignores NULLs.
+model Payment {
+  id                 String        @id @default(uuid())
+  routeId            String        @unique
+  quoteId            String        @unique
+  invoiceId          String        @unique
+  payerAddress       String
+  destination        String
+  amount             Decimal       @db.Decimal(20, 6)
+  assetCode          String
+  transactionHash    String?       @unique
+  // Persisted before the paid request is sent so a lost response resolves by hash (FR-070/FR-071).
+  // Never returned through a public API (SEC-009).
+  signedTxBlob       String?
+  lastLedgerSequence Int?
+  status             PaymentStatus @default(CREATED)
+  ledgerIndex        Int?
+  validatedAt        DateTime?
+  failureCode        String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  route Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  quote Quote @relation(fields: [quoteId], references: [id])
+
+  @@index([createdAt])
+}
+
+model Execution {
+  id           String          @id @default(uuid())
+  routeId      String          @unique
+  invoiceId    String          @unique
+  offerId      String
+  modelId      String
+  status       ExecutionStatus @default(pending)
+  inputTokens  Int?
+  outputTokens Int?
+  latencyMs    Int?
+  result       String?
+  failureCode  String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  route Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
+}
