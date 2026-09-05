@@ -63,11 +63,15 @@ async function rpc(
         result?: Record<string, unknown>;
         error?: string;
       };
-      if (msg.status !== 'success' || !msg.result) {
+      // An unfunded (never activated) account is not an error: report zero balances.
+      if (msg.error === 'actNotFound') {
+        results.set(msg.id, {});
+      } else if (msg.status !== 'success' || !msg.result) {
         done(() => reject(new Error(`ledger error ${msg.error ?? msg.status}`)));
         return;
+      } else {
+        results.set(msg.id, msg.result);
       }
-      results.set(msg.id, msg.result);
       if (results.size === commands.length)
         done(() => resolve(commands.map((_, i) => results.get(i) as Record<string, unknown>)));
     });
