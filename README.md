@@ -163,7 +163,7 @@ With `CLASSIFIER_PROVIDER=mock` and `SELLER_UPSTREAM_PROVIDER=mock` (the default
 ```bash
 pnpm test         # Vitest: unit, mocked integration and PRD §17 acceptance tests, no network
 pnpm exec playwright install chromium   # once, first run only
-pnpm test:e2e     # Playwright: mocked route and /history flows through the real UI (WEB_PORT=3177 if 3000 is busy)
+pnpm test:e2e     # Playwright: mocked route and /history flows through the real UI, against a production build (~1-2 min; WEB_PORT=3177 if 3000 is busy)
 pnpm typecheck    # all packages, scripts/ and tests/
 pnpm lint
 ```
