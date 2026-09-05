@@ -1,1 +1,190 @@
 # SubBuddy
+
+**One wallet. The right model for every task. Pay only when it is used.**
+
+SubBuddy is a wallet-native AI inference router built for the Singhacks 2026 Ripple challenge, "Build an AI-Native Business on XRPL". A user (or, later, an agent) submits a prompt and a maximum spend. The agent classifies the task, compares purchasable inference offers, selects one under a request-scoped mandate, pays the seller through x402 settled on XRPL Testnet, and returns the model response together with a verifiable economic receipt.
+
+> Testnet demo wallet, not production custody. The agent wallet is a server-controlled XRPL **Testnet** wallet holding no real-value funds. Its seed lives only in backend environment secrets. This is a prototype exception (PRD DEC-006, §15.1); production replaces it with client-side or delegated policy-gated signing (§15.4). Nothing here is a production non-custodial architecture.
+
+## What it proves
+
+A user or agent can buy the most suitable AI inference for a task without creating an account with the seller, holding prepaid credits, or supplying an API key to the seller. The buyer's per-seller credentials and balances are replaced by one wallet-backed, request-scoped purchase.
+
+It does not prove that API keys vanish from the whole supply chain: a seller may still hold an upstream model credential behind its x402 gate, and the buyer holds one credential for prompt classification (DEC-014), with a deterministic fallback classifier if that fails.
+
+## Problem
+
+An agent can decide which AI capability it needs, but access is normally pre-provisioned: a human creates provider accounts, funds balances, obtains keys, and configures the agent before it can act.
+
+```text
+Dynamic agent decision + Static commercial access = Limited autonomy
+```
+
+SubBuddy replaces the buyer's provider-specific commercial relationship with a request-scoped payment:
+
+```text
+Need -> Discover -> Compare -> Authorise -> Pay -> Consume -> Verify
+```
+
+## Positioning
+
+A prompt-aware economic routing layer that selects an inference offer and purchases it through an x402 payment settled on XRPL. The differentiation is buyer-controlled routing, inspectable decisions, request-scoped authorization, and direct settlement to an x402 seller. It is not a paywalled model aggregator with a token bolted on: remove the agent or remove autonomous payment and the product stops working.
+
+## The market it draws from: XRPL AI Hub
+
+The [XRPL AI Hub](https://xrpl-ai.org/) is the live directory of x402 services on XRPL, priced in XRP or RLUSD. SubBuddy is designed to draw its offers from that market (FR-021, P1 `XrplAiHubRegistry`). The MVP routes over a curated, version-controlled registry of three demo sellers because hub listings are Mainnet services and would yield no eligible Testnet offers under `APP_ENV=hackathon`. The `ProviderRegistry` interface is the seam; the hub-backed implementation slots in without touching routing or UI.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    UI["Next.js web client (apps/web)"] --> API["Fastify buyer API (apps/api)"]
+    API --> CLASS["Classifier (packages/routing)"]
+    API --> REG["Curated offer registry (packages/config)"]
+    API --> POLICY["Policy engine + spend cap"]
+    API --> DB["PostgreSQL via Prisma (packages/database)"]
+    API --> PAY["x402/XRPL buyer adapter (packages/payments)"]
+    PAY -- "1. unpaid request -> 402" --> SELLER["x402 seller, Express + x402-xrpl (apps/seller)"]
+    PAY -- "2. same request + PAYMENT-SIGNATURE" --> SELLER
+    SELLER -- "verify + settle" --> FAC["T54 XRPL Testnet facilitator"]
+    FAC -- "submit signed Payment" --> XRPL["XRPL Testnet"]
+    SELLER -- "after settlement, once per invoice" --> MODEL["Upstream model API"]
+    PAY -- "3. independent tx lookup" --> XRPL
+```
+
+Payment flow (PRD §7.2, amended to the x402 XRPL exact scheme):
+
+1. Buyer sends the inference request to the top-ranked seller. Seller answers `402 Payment Required` without running inference. The requirement is stored as an immutable quote.
+2. Policy engine approves the exact amount, asset, destination, network, invoice binding, and expiry against the user's mandate and the hourly spend cap.
+3. Buyer signs one XRPL `Payment` (`InvoiceID = SHA-256(invoiceId)`, bounded `LastLedgerSequence`, no partial payment, no paths). The signed blob and its locally computed hash are persisted before anything leaves the process.
+4. Buyer resends the identical request with `PAYMENT-SIGNATURE`. This single call is both the settlement trigger and the execution trigger.
+5. Seller hands the payload to the facilitator, which verifies and submits to XRPL. Seller runs inference exactly once after settlement and returns the result with a `PAYMENT-RESPONSE` header carrying the tx hash.
+6. Buyer independently confirms the hash is `tesSUCCESS` in a validated ledger, then and only then marks the payment `SETTLED`.
+
+Retries resend the same blob; a quote is never signed twice. Details, state machines, and invariants: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Repository layout
+
+```text
+apps/web        Next.js + Tailwind single-page router UI, receipts, history
+apps/api        Fastify buyer API: routes, policy gate, settlement state machine, SSE events
+apps/seller     Express + x402-xrpl seller: 402 gate, facilitator settle, upstream model
+packages/contracts   Zod wire schemas, route/payment state machines
+packages/routing     classifier (LLM + deterministic fallback), eligibility, scoring, explanation
+packages/payments    xrpl.js + x402-xrpl adapter behind PaymentClient / WalletSigner
+packages/database    Prisma schema, repository, spend ledger, in-memory fake for tests
+packages/config      env validation (SEC-010), curated offer registry
+tests/e2e            mocked Playwright flow (no network)
+```
+
+## Setup
+
+Prerequisites: Node 22, pnpm 11, Docker (for Postgres).
+
+```bash
+pnpm install
+cp .env.example .env            # then fill in the values below
+pnpm db:up                      # docker compose up -d postgres
+pnpm --filter @subbuddy/database generate
+pnpm --filter @subbuddy/database db:migrate
+```
+
+`.env` is gitignored and never committed. Every variable is documented with a non-secret example in [.env.example](.env.example). The minimum you must change:
+
+| Variable | What to set |
+| --- | --- |
+| `AGENT_WALLET_SEED` | Family seed of the funded Testnet agent wallet (buyer side only). |
+| `SELLER_PAYTO_ADDRESS` | Classic address of the seller's Testnet wallet. |
+| `RLUSD_ISSUER` | Testnet RLUSD issuer address (from the faucet page below). |
+| `DEMO_API_KEY` / `NEXT_PUBLIC_DEMO_API_KEY` | The same long random string. Hackathon-only bearer key (SEC-011). |
+
+Startup fails fast if `APP_ENV=hackathon` and any XRPL setting points at Mainnet (SEC-010).
+
+### Fund the Testnet wallets
+
+You need two Testnet accounts: the agent (buyer) wallet and the seller wallet. Both need XRP for reserves and fees; both need an RLUSD trust line to the Testnet issuer, and the agent wallet needs an RLUSD balance.
+
+1. Create and fund both accounts with Testnet XRP at the [XRP Testnet faucet](https://faucet.altnet.rippletest.net/) (or `xrpl.js` `client.fundWallet()`). Keep the seeds out of source; the agent seed goes in `.env` only.
+2. Get Testnet RLUSD for the agent wallet from the [RLUSD Testnet faucet, tryrlusd.com](https://tryrlusd.com/) (listed in [ripple/resources.md](ripple/resources.md)). The faucet page shows the Testnet issuer address; copy it into `RLUSD_ISSUER`.
+3. Set an RLUSD trust line from each wallet to the issuer. Receiving an issued currency requires one, so the seller cannot be paid without it:
+
+```js
+// node -e "$(cat)" < this snippet, with SEED and ISSUER from your terminal, never from source
+import { Client, Wallet } from 'xrpl';
+const c = new Client('wss://s.altnet.rippletest.net:51233'); await c.connect();
+const w = Wallet.fromSeed(process.env.SEED);
+await c.submitAndWait({
+  TransactionType: 'TrustSet', Account: w.address,
+  LimitAmount: { currency: '524C555344000000000000000000000000000000', issuer: process.env.ISSUER, value: '1000' },
+}, { wallet: w, autofill: true });
+await c.disconnect();
+```
+
+4. Check the balance with `GET /v1/wallet` once the API is running, or on the [Testnet explorer](https://testnet.xrpl.org/).
+
+Fallback: set `SETTLEMENT_ASSET=XRP` to settle in Testnet XRP with no trust lines (DEC-005). This is a configuration change only.
+
+## Run
+
+Three processes, three terminals. Buyer and seller always talk over HTTP; the seller is never called in-process.
+
+```bash
+pnpm dev:seller   # http://localhost:4020, x402 gate + facilitator
+pnpm dev:api      # http://localhost:4010, buyer API
+pnpm dev:web      # http://localhost:3000, UI
+```
+
+With `CLASSIFIER_PROVIDER=mock` and `SELLER_UPSTREAM_PROVIDER=mock` (the defaults) the flow runs end to end with a deterministic classifier and a canned model answer, while the payment still goes through the real facilitator and XRPL Testnet. Set `SELLER_UPSTREAM_PROVIDER=openai-compatible` plus base URL and key on the seller side for real inference; set `CLASSIFIER_PROVIDER=anthropic` plus a key on the buyer side for LLM classification.
+
+## Test
+
+```bash
+pnpm test         # Vitest: unit + mocked integration across all packages, no network
+pnpm test:e2e     # Playwright: one mocked no-payment route through the real UI
+pnpm typecheck
+pnpm lint
+```
+
+Nothing in `pnpm test` or `pnpm test:e2e` touches XRPL, the facilitator, or an upstream model: xrpl.js clients, the facilitator client, and model calls are all replaced with fakes. CI runs exactly these (`.github/workflows/ci.yml`).
+
+### Manual live Testnet smoke test (PRD §18.3)
+
+Run this by hand before submission. It must never run on ordinary CI commits.
+
+1. Fund and configure wallets as above. Start seller, API, and web with real Testnet settings.
+2. Open http://localhost:3000. Confirm the Testnet badge and a non-zero agent wallet balance.
+3. Enter the demo prompt below, mode **Balanced**, max cost `0.020000` RLUSD. Press **Route and Run**.
+4. Watch the timeline: classification, three candidates, selection, 402 quote, policy approval, signed, paid request sent, verifying, succeeded.
+5. Expand the receipt. Copy the transaction hash and open the explorer link; confirm destination, amount, and asset match the receipt (AT-011).
+6. Press execute again or refresh the page and re-execute the same route. Confirm no second payment is created and the same hash is returned (AT-005).
+7. Record the evidence in [docs/EVIDENCE.md](docs/EVIDENCE.md).
+
+| Run | Date (UTC) | Route ID | Tx hash | Explorer link | Amount / asset | Result |
+| --- | --- | --- | --- | --- | --- | --- |
+| Happy path | `TODO` | `TODO` | `TODO` | `https://testnet.xrpl.org/transactions/<hash>` | `TODO RLUSD` | `TODO` |
+| Duplicate execute | `TODO` | same as above | same as above | same as above | no new payment | `TODO` |
+
+## Demo script (PRD §22)
+
+1. **Setup.** Show the XRPL Testnet badge, the funded agent wallet balance, the four routing modes, and the maximum-cost control.
+2. **Prompt.** Mode Balanced, max cost `0.020000 RLUSD`:
+   > Explain this distributed database query plan and identify the most expensive operation. Keep the answer under 500 words.
+3. **Agent decision.** Show the classification (technical reasoning or long-context analysis), the three considered offers, one excluded or lower-ranked alternative, the selected offer's score factors, and the registry estimate next to the authoritative quote.
+4. **Commercial loop.** Narrate only what is on screen: seller requested payment; policy confirmed the quote was within the mandate; agent signed one exact Testnet payment; XRPL validated it; seller released the purchased inference.
+5. **Evidence.** Show the answer, expand the economic receipt, open the transaction in the Testnet explorer, then repeat execute to show no second payment occurs.
+
+No platform commission is executed or displayed anywhere in the MVP (DEC-007, INV-008).
+
+## Builder feedback
+
+Two parts, both required by the challenge:
+
+- The XRPL feedback Stop hook (`ripple/hook/`) is registered in `.claude/settings.json` and has been running for the whole build. It submits concrete XRPL and tooling friction as it is observed. Manual submit: `node ripple/hook/submit.mjs --text "<one specific paragraph>"`.
+- Final feedback form, submitted near the end of the hackathon: https://forms.gle/FZckiEAMU8oWXVbX7
+
+## Further reading
+
+- [PRD_SPECS.md](PRD_SPECS.md), the source of truth; every P0 behaviour has a requirement ID.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), adapter boundaries, state machines, invariants, what is mocked vs live.
+- [docs/EVIDENCE.md](docs/EVIDENCE.md), transaction hashes, explorer links, screenshots.
+- [ripple/README.md](ripple/README.md) and [ripple/resources.md](ripple/resources.md), the challenge brief and tool list.
