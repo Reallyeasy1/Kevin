@@ -1,0 +1,144 @@
+{
+  "routeId": "9933e217-1226-4266-a1eb-3c879a73ca80",
+  "promptHash": "23d46c46ecc5e2c49938f9aeb05e2d3cb0f668f06c21bcb22ad62f76c534b21c",
+  "taskProfile": {
+    "taskType": "coding",
+    "reasoningLevel": "medium",
+    "inputModality": "text",
+    "estimatedInputTokens": 25,
+    "requiredContextTokens": 4096,
+    "toolCallingRequired": false,
+    "confidence": 0.5
+  },
+  "mode": "balanced",
+  "state": "SUCCEEDED",
+  "candidates": [
+    {
+      "offerId": "fast-code-v1",
+      "sellerId": "demo-seller-b",
+      "displayName": "Fast Code",
+      "eligibility": "selected",
+      "rejectionReasons": [],
+      "qualityScore": "0.88",
+      "costScore": "0.6",
+      "latencyScore": "0.7",
+      "reliabilityScore": "0.97",
+      "finalScore": "0.778",
+      "estimatedCost": "0.006",
+      "quotedCost": "0.006000",
+      "source": "curated"
+    },
+    {
+      "offerId": "deep-reasoning-v1",
+      "sellerId": "demo-seller-c",
+      "displayName": "Deep Reasoning",
+      "eligibility": "not_quoted",
+      "rejectionReasons": [],
+      "qualityScore": "0.92",
+      "costScore": "0",
+      "latencyScore": "0",
+      "reliabilityScore": "0.95",
+      "finalScore": "0.509",
+      "estimatedCost": "0.015",
+      "quotedCost": null,
+      "source": "curated"
+    },
+    {
+      "offerId": "fast-text-v1",
+      "sellerId": "demo-seller-a",
+      "displayName": "Fast Text",
+      "eligibility": "ineligible",
+      "rejectionReasons": ["CAPABILITY_MISSING"],
+      "qualityScore": null,
+      "costScore": null,
+      "latencyScore": null,
+      "reliabilityScore": null,
+      "finalScore": null,
+      "estimatedCost": "0.002",
+      "quotedCost": null,
+      "source": "curated"
+    }
+  ],
+  "selectedOfferId": "fast-code-v1",
+  "estimatedCost": "0.006",
+  "quotedCost": "0.006000",
+  "policyDecision": {
+    "approved": true,
+    "checks": [
+      {
+        "name": "route_state_quoted",
+        "passed": true
+      },
+      {
+        "name": "mandate_active",
+        "passed": true
+      },
+      {
+        "name": "quote_not_expired",
+        "passed": true
+      },
+      {
+        "name": "network_match",
+        "passed": true
+      },
+      {
+        "name": "asset_match",
+        "passed": true
+      },
+      {
+        "name": "seller_allowlisted",
+        "passed": true
+      },
+      {
+        "name": "amount_within_mandate",
+        "passed": true
+      },
+      {
+        "name": "no_existing_payment",
+        "passed": true
+      },
+      {
+        "name": "spend_cap",
+        "passed": true
+      },
+      {
+        "name": "wallet_balance",
+        "passed": true
+      }
+    ]
+  },
+  "payment": {
+    "status": "SETTLED",
+    "payerAddress": "rMdiYvvzXMhZvkTkPX9Kma7F61o6m4r5e3",
+    "destination": "r9jnMEauwP4Mh3dfAHNdSjFM4yiYGmsoUD",
+    "amount": "0.006000",
+    "assetCode": "RLUSD",
+    "transactionHash": "89F5643E4F083E7BFACA72CDAEC37B4924A0147B81F0CEE58193408DE9C506E6",
+    "explorerUrl": "https://testnet.xrpl.org/transactions/89F5643E4F083E7BFACA72CDAEC37B4924A0147B81F0CEE58193408DE9C506E6",
+    "ledgerIndex": 20496719,
+    "validatedAt": "2026-09-05T05:02:02.000Z",
+    "failureCode": null
+  },
+  "execution": {
+    "status": "succeeded",
+    "modelId": "demo/fast-code",
+    "latencyMs": 1,
+    "inputTokens": 25,
+    "outputTokens": 34,
+    "failureCode": null
+  },
+  "createdAt": "2026-09-05T05:01:52.766Z",
+  "updatedAt": "2026-09-05T05:02:04.386Z",
+  "expiresAt": "2026-09-05T05:06:52.755Z",
+  "selected": {
+    "offerId": "fast-code-v1",
+    "sellerName": "Fast Code",
+    "modelId": "demo/fast-code",
+    "score": "0.778",
+    "estimatedCost": "0.006",
+    "quotedCost": "0.006000",
+    "asset": "RLUSD",
+    "reason": "Selected Fast Code for a coding task in balanced mode."
+  },
+  "result": "[mock demo/fast-code] Answer for prompt 23d46c46ecc5: Write a TypeScript function that parses an ISO-8601 duration string into total s"
+}

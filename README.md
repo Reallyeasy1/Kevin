@@ -184,8 +184,8 @@ The UI walk-through:
 2. **Prompt.** Mode Balanced, max cost `0.020000 RLUSD`:
    > Explain this distributed database query plan and identify the most expensive operation. Keep the answer under 500 words.
 3. **Agent decision.** Show the classification (technical reasoning or long-context analysis), the three considered offers, one excluded or lower-ranked alternative, the selected offer's score factors, and the registry estimate next to the authoritative quote.
-4. **Commercial loop.** Narrate only what is on screen: seller requested payment; policy confirmed the quote was within the mandate; agent signed one exact Testnet payment; XRPL validated it; seller released the purchased inference.
-5. **Evidence.** Show the answer, expand the economic receipt, open the transaction in the Testnet explorer, then repeat execute to show no second payment occurs.
+4. **Commercial loop.** Narrate only what is on screen: seller requested payment; policy confirmed the quote was within the mandate; agent signed one exact Testnet payment; XRPL validated it; seller released the purchased inference. ([docs/screenshots/04-timeline.png](docs/screenshots/04-timeline.png))
+5. **Evidence.** Show the answer, expand the economic receipt, open the transaction in the Testnet explorer, then repeat execute to show no second payment occurs. ([docs/screenshots/05-receipt.png](docs/screenshots/05-receipt.png); all seven §22 screenshots and their transaction are in [docs/EVIDENCE.md](docs/EVIDENCE.md).)
 
 No platform commission is executed or displayed anywhere in the MVP (DEC-007, INV-008).
 
