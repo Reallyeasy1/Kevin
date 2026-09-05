@@ -22,6 +22,14 @@ All transactions are on XRPL **Testnet** from a demo agent wallet with no real-v
 | 4 | 2026-09-05 03:51:52 | Trust line, seller wallet (TrustSet) | n/a | n/a | `21AE3CBBE4D718BC0DD3C4E6F835C69B9A850287FDB0BD1D76CAB8994CCE7E94` | 20495373 | limit 1000000 | RLUSD | `tesSUCCESS` | https://testnet.xrpl.org/transactions/21AE3CBBE4D718BC0DD3C4E6F835C69B9A850287FDB0BD1D76CAB8994CCE7E94 |
 | 5 | 2026-09-05 05:02:02 | UI demo run (PRD §22, screenshots 01-07; AT-005 re-executed twice, same hash) | `9933e217-1226-4266-a1eb-3c879a73ca80` | `2CFEAA2CCB3F6038604E4F8528123EEC1CC94439A4FC6B0B402CBDEFCD2AAB27` | `89F5643E4F083E7BFACA72CDAEC37B4924A0147B81F0CEE58193408DE9C506E6` | 20496719 | 0.006000 | RLUSD | `tesSUCCESS` | https://testnet.xrpl.org/transactions/89F5643E4F083E7BFACA72CDAEC37B4924A0147B81F0CEE58193408DE9C506E6 |
 
+Verify without a browser (testnet.xrpl.org is a client-side app and returns only a page shell to non-interactive fetches). Query the public Testnet JSON-RPC node directly:
+
+```bash
+curl -s https://s.altnet.rippletest.net:51234 -d '{"method":"tx","params":[{"transaction":"<hash>"}]}'
+```
+
+Check in `result`: `validated: true`, `meta.TransactionResult: "tesSUCCESS"`, `tx_json.TransactionType: "Payment"`, `tx_json.Destination` = seller wallet, `tx_json.DeliverMax` and `meta.delivered_amount` = `{currency: 524C5553440000..., issuer: rQhWct2f..., value: "0.006"}` (RLUSD hex code), `tx_json.InvoiceID` = the Invoice ID column, `ledger_index` = the Ledger index column.
+
 Invoice IDs are the on-ledger `InvoiceID` field (SHA-256 of the x402 invoice id), read back from the ledger with xrpl.js. Row 5 was produced by `node scripts/with-env.mjs node scripts/demo-screenshots.mjs`, which drives the real UI once, re-executes the route through `POST /v1/routes/:id/execute` and fetches the transaction from Testnet; the receipt it saved is `docs/screenshots/05-receipt.json`.
 
 Add rows for any XRP-fallback run (`SETTLEMENT_ASSET=XRP`) or paid-execution-failure demonstration (AT-007).

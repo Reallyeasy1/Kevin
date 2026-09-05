@@ -84,9 +84,21 @@ tests/e2e            mocked Playwright flows (route, history; no network)
 scripts/             smoke-testnet.ts, the manual live Testnet smoke test (never on CI)
 ```
 
+## Quick start (no wallet, no Docker)
+
+```bash
+pnpm install
+pnpm typecheck
+pnpm test
+pnpm exec playwright install chromium   # once, first run only
+pnpm test:e2e
+```
+
+These need only Node 22 + pnpm; `.env`, Postgres and Testnet wallets are only for running the live demo (next section).
+
 ## Setup
 
-Prerequisites: Node 22, pnpm 11, Docker (for Postgres).
+Prerequisites: Node 22, pnpm 11, Docker (live demo only, for Postgres).
 
 ```bash
 pnpm install
@@ -150,12 +162,13 @@ With `CLASSIFIER_PROVIDER=mock` and `SELLER_UPSTREAM_PROVIDER=mock` (the default
 
 ```bash
 pnpm test         # Vitest: unit, mocked integration and PRD §17 acceptance tests, no network
+pnpm exec playwright install chromium   # once, first run only
 pnpm test:e2e     # Playwright: mocked route and /history flows through the real UI (WEB_PORT=3177 if 3000 is busy)
 pnpm typecheck    # all packages, scripts/ and tests/
 pnpm lint
 ```
 
-Nothing in `pnpm test` or `pnpm test:e2e` touches XRPL, the facilitator, or an upstream model: xrpl.js clients, the facilitator client, and model calls are all replaced with fakes. CI runs exactly these (`.github/workflows/ci.yml`).
+Nothing in `pnpm test` or `pnpm test:e2e` touches XRPL, the facilitator, or an upstream model: xrpl.js clients, the facilitator client, and model calls are all replaced with fakes. One file (`packages/database/src/db.test.ts`, repository against Postgres, FR-071/AT-005) runs only when `DATABASE_URL` points at a reachable Postgres; it is skipped otherwise (shown as "1 skipped") and runs on CI against a real Postgres. CI runs exactly these (`.github/workflows/ci.yml`).
 
 ### Manual live Testnet smoke test (PRD §18.3)
 
