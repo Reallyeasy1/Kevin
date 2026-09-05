@@ -9,6 +9,18 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # Real Postgres so migrations are applied and the DB-backed tests run (they skip without DATABASE_URL).
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: subbuddy
+          POSTGRES_PASSWORD: subbuddy
+          POSTGRES_DB: subbuddy
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U subbuddy" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://subbuddy:subbuddy@localhost:5432/subbuddy
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -19,4 +31,5 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
+      - run: pnpm --filter @subbuddy/database db:migrate
       - run: pnpm test
