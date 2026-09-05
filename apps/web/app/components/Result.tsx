@@ -333,7 +333,7 @@ const MD: React.ComponentProps<typeof ReactMarkdown>['components'] = {
   a: (p) => <a className="underline" target="_blank" rel="noreferrer" {...p} />,
   pre: (p) => (
     <pre
-      className="mt-2 overflow-x-auto rounded bg-neutral-900 p-3 font-mono text-xs text-neutral-100"
+      className="mt-2 overflow-x-auto rounded bg-neutral-900 p-3 font-mono text-xs text-neutral-100 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-inherit [&_code]:text-xs"
       {...p}
     />
   ),
