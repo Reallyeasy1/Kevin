@@ -8,18 +8,18 @@ All transactions are on XRPL **Testnet** from a demo agent wallet with no real-v
 
 | Role | Testnet address | Explorer |
 | --- | --- | --- |
-| Agent (buyer) wallet | `TODO r...` | `https://testnet.xrpl.org/accounts/<address>` |
-| Seller wallet (payTo) | `TODO r...` | `https://testnet.xrpl.org/accounts/<address>` |
-| RLUSD Testnet issuer | `TODO r...` | `https://testnet.xrpl.org/accounts/<address>` |
+| Agent (buyer) wallet | `rMdiYvvzXMhZvkTkPX9Kma7F61o6m4r5e3` | https://testnet.xrpl.org/accounts/rMdiYvvzXMhZvkTkPX9Kma7F61o6m4r5e3 |
+| Seller wallet (payTo) | `r9jnMEauwP4Mh3dfAHNdSjFM4yiYGmsoUD` | https://testnet.xrpl.org/accounts/r9jnMEauwP4Mh3dfAHNdSjFM4yiYGmsoUD |
+| RLUSD Testnet issuer | `rQhWct2fv4Vc4KRjRgMrxa8xPN9Zx9iLKV` | https://testnet.xrpl.org/accounts/rQhWct2fv4Vc4KRjRgMrxa8xPN9Zx9iLKV |
 
 ## Transactions
 
 | # | Date (UTC) | Purpose | Route ID | Invoice ID | Tx hash | Ledger index | Amount | Asset | Result | Explorer |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `TODO` | Happy path (AT-001, AT-011) | `TODO` | `TODO` | `TODO` | `TODO` | `TODO` | RLUSD | `tesSUCCESS` | `TODO` |
-| 2 | `TODO` | Duplicate execute (AT-005): same hash, no new tx | same as 1 | same as 1 | same as 1 | same as 1 | none | RLUSD | no new payment | same as 1 |
-| 3 | `TODO` | Trust line, agent wallet (TrustSet) | n/a | n/a | `TODO` | `TODO` | limit `TODO` | RLUSD | `tesSUCCESS` | `TODO` |
-| 4 | `TODO` | Trust line, seller wallet (TrustSet) | n/a | n/a | `TODO` | `TODO` | limit `TODO` | RLUSD | `tesSUCCESS` | `TODO` |
+| 1 | 2026-09-05 04:48:42 | Happy path (AT-001, AT-011) | `b88803e3-53ea-43a2-836b-a4c35ded6eb5` | `735A8B6E482899783F8DA47DB2B53480A3FB2B958AF1E0437733E89CA7CF16FE` | `4F930E96D76AF9D6F0D7696B168D017EBE463A0F7ED0584CAC06DD4248909C4D` | 20496465 | 0.006000 | RLUSD | `tesSUCCESS` | https://testnet.xrpl.org/transactions/4F930E96D76AF9D6F0D7696B168D017EBE463A0F7ED0584CAC06DD4248909C4D |
+| 2 | 2026-09-05 04:48:42 | Duplicate execute (AT-005): same hash, no new tx | same as 1 | same as 1 | same as 1 | same as 1 | none | RLUSD | no new payment | same as 1 |
+| 3 | 2026-09-05 03:51:41 | Trust line, agent wallet (TrustSet) | n/a | n/a | `3C1671DBA2718154FEAF7B9DF96EA43F35EA6C2182047E1B0DE2DE9EE0D97326` | 20495369 | limit 1000000 | RLUSD | `tesSUCCESS` | https://testnet.xrpl.org/transactions/3C1671DBA2718154FEAF7B9DF96EA43F35EA6C2182047E1B0DE2DE9EE0D97326 |
+| 4 | 2026-09-05 03:51:52 | Trust line, seller wallet (TrustSet) | n/a | n/a | `21AE3CBBE4D718BC0DD3C4E6F835C69B9A850287FDB0BD1D76CAB8994CCE7E94` | 20495373 | limit 1000000 | RLUSD | `tesSUCCESS` | https://testnet.xrpl.org/transactions/21AE3CBBE4D718BC0DD3C4E6F835C69B9A850287FDB0BD1D76CAB8994CCE7E94 |
 
 Add rows for any XRP-fallback run (`SETTLEMENT_ASSET=XRP`) or paid-execution-failure demonstration (AT-007).
 
@@ -27,17 +27,17 @@ Add rows for any XRP-fallback run (`SETTLEMENT_ASSET=XRP`) or paid-execution-fai
 
 | AT | Description | Evidence type | Where | Status |
 | --- | --- | --- | --- | --- |
-| AT-001 | Successful balanced route | live run, tx #1 | above | `TODO` |
+| AT-001 | Successful balanced route | live run, tx #1 | above | passed 2026-09-05 (`pnpm smoke:testnet -- 0.020000`, exit 0) |
 | AT-002 | No offer within budget | unit + API test | `apps/api/src/app.test.ts` | automated |
 | AT-003 | Authoritative quote exceeds estimate | unit | `packages/payments/src/quote.test.ts` | automated |
 | AT-004 | Destination substitution attack | unit | `packages/payments/src/quote.test.ts` | automated |
-| AT-005 | Duplicate execute calls | API test + live run, tx #2 | `apps/api/src/app.test.ts`, above | `TODO` (live) |
+| AT-005 | Duplicate execute calls | API test + live run, tx #2 | `apps/api/src/app.test.ts`, above | passed 2026-09-05: second execute returned 202, same hash, no new payment |
 | AT-006 | Lost submission response | API test | `apps/api/src/app.test.ts` | automated |
 | AT-007 | Paid execution failure | API test | `apps/api/src/app.test.ts` | automated |
 | AT-008 | Classifier failure | unit | `packages/routing/src/classifier.test.ts` | automated |
 | AT-009 | Prompt mutation | API test | `apps/api/src/app.test.ts` | automated |
 | AT-010 | Commission exclusion | manual: receipt and UI show no fee row | tx #1 receipt, screenshot 05 | `TODO` |
-| AT-011 | Explorer evidence | manual, tx #1 | above | `TODO` |
+| AT-011 | Explorer evidence | manual, tx #1 | above | passed 2026-09-05: smoke script fetched tx from ledger, validated tesSUCCESS, destination and amount match receipt |
 | AT-012 | Seller payment gate | seller test | `apps/seller/src/app.test.ts` | automated |
 
 ## Screenshots

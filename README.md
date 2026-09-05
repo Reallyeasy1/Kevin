@@ -175,8 +175,8 @@ The UI walk-through:
 
 | Run | Date (UTC) | Route ID | Tx hash | Explorer link | Amount / asset | Result |
 | --- | --- | --- | --- | --- | --- | --- |
-| Happy path | `TODO` | `TODO` | `TODO` | `https://testnet.xrpl.org/transactions/<hash>` | `TODO RLUSD` | `TODO` |
-| Duplicate execute | `TODO` | same as above | same as above | same as above | no new payment | `TODO` |
+| Happy path | 2026-09-05 04:48:42 | `b88803e3-53ea-43a2-836b-a4c35ded6eb5` | `4F930E96D76AF9D6F0D7696B168D017EBE463A0F7ED0584CAC06DD4248909C4D` | https://testnet.xrpl.org/transactions/4F930E96D76AF9D6F0D7696B168D017EBE463A0F7ED0584CAC06DD4248909C4D | 0.006000 RLUSD | `tesSUCCESS`, ledger 20496465 |
+| Duplicate execute | 2026-09-05 04:48:42 | same as above | same as above | same as above | no new payment | 202, state SUCCEEDED, same hash |
 
 ## Demo script (PRD §22)
 
