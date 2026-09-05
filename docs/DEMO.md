@@ -15,6 +15,8 @@ Everything on screen is XRPL **Testnet** from a demo agent wallet with no real-v
 Shortcut: `pnpm demo` (scripts/demo.mjs) brings up Postgres, migrates, and runs seller + api + web in one terminal with prefixed logs, choosing 3100 for the web when 3000 is busy. The explicit version, one process per terminal, is:
 
 ```bash
+# terminal 0 (live hub discovery: uncomment HUB_URL=http://localhost:4030 in .env and start the hub before seller and api)
+pnpm dev:hub                                      # http://localhost:4030/health -> {"status":"ok"}
 # terminal 1
 pnpm db:up && pnpm --filter @subbuddy/database db:migrate
 pnpm dev:seller                                   # http://localhost:4020/health -> {"status":"ok"}
@@ -45,7 +47,7 @@ node scripts/with-env.mjs pnpm --filter @subbuddy/web exec next dev --webpack --
 
 ## Step 2: Prompt (§22.2)
 
-**Click:** the prompt box. Paste exactly:
+**Click:** the prompt box (or open http://localhost:3100/chat and type into the chat composer; each turn is one paid route). Paste exactly:
 
 > Explain this distributed database query plan and identify the most expensive operation. Keep the answer under 500 words.
 

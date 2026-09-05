@@ -1,4 +1,4 @@
-import { CuratedRegistry, buildCuratedOffers, loadSellerEnv } from '@subbuddy/config';
+import { buildCuratedOffers, loadMergedRegistry, loadSellerEnv } from '@subbuddy/config';
 import { FacilitatorClient } from 'x402-xrpl';
 import { createApp, createSellerLogger } from './app.js';
 import { mockUpstream, openAiCompatibleUpstream } from './upstream.js';
@@ -18,8 +18,16 @@ function upstreamFromEnv() {
   });
 }
 
+// FR-021: the seller prices the same registry the buyer routes over, so hub-discovered offers pointing at
+// this seller get a 402 quote at the listing's price. Live from HUB_URL when set, import otherwise.
+const registry = await loadMergedRegistry(env, buildCuratedOffers(env), {
+  hubUrl: env.HUB_URL,
+  log: (m) => logger.warn(m),
+});
+logger.info({ hub: registry.hubStatus }, 'offer registry loaded');
+
 const app = createApp({
-  registry: new CuratedRegistry(buildCuratedOffers(env)),
+  registry,
   upstream: upstreamFromEnv(),
   facilitator: new FacilitatorClient({ baseUrl: env.FACILITATOR_URL }),
   logger,

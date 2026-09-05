@@ -75,7 +75,9 @@ Retries resend the same blob; a quote is never signed twice. Details, state mach
 ## Repository layout
 
 ```text
-apps/web        Next.js + Tailwind single-page router UI, receipts, /history (paginated past routes from GET /v1/routes)
+apps/web        Next.js + Tailwind. /chat: chat UI, one paid route per turn, settings (mode, max cost) inline; sessions persist in the browser (localStorage)
+                /: single-page router with the six-step timeline and receipt; /history: past routes with per-route deep links (GET /v1/routes)
+apps/hub        Dummy XRPL AI Hub (node:http, :4030): GET /api/listings with Testnet listings pointing at the local seller, GET /listing/<id>
 apps/api        Fastify buyer API: routes, policy gate, settlement state machine, SSE events
 apps/seller     Express + x402-xrpl seller: 402 gate, facilitator settle, upstream model
 packages/contracts   Zod wire schemas, route/payment state machines
@@ -153,9 +155,10 @@ Fallback: set `SETTLEMENT_ASSET=XRP` to settle in Testnet XRP with no trust line
 
 ## Run
 
-Three processes, three terminals. Buyer and seller always talk over HTTP; the seller is never called in-process. Shortcut: `pnpm demo` (scripts/demo.mjs) starts Postgres, migrates, and runs all three with prefixed logs in one terminal; Ctrl+C stops them all.
+Three processes, three terminals. Buyer and seller always talk over HTTP; the seller is never called in-process. Shortcut: `pnpm demo` (scripts/demo.mjs) starts Postgres, migrates, and runs all three with prefixed logs in one terminal; Ctrl+C stops them all. Optional fourth process: `pnpm dev:hub` runs the dummy XRPL AI Hub on :4030; with `HUB_URL=http://localhost:4030` set (in the shell or uncommented in `.env`) before seller and api start, both fetch its listings at startup and the agent routes over live hub-discovered Testnet offers (FR-021). Without it, discovery falls back to `hub-offers.json` and the UI shows the "hub discovery unavailable" notice.
 
 ```bash
+pnpm dev:hub      # http://localhost:4030, dummy XRPL AI Hub (optional; set HUB_URL before starting seller/api)
 pnpm dev:seller   # http://localhost:4020, x402 gate + facilitator
 pnpm dev:api      # http://localhost:4010, buyer API
 pnpm dev:web      # http://localhost:3000, UI (port busy? pnpm --filter @subbuddy/web exec next dev --webpack --port 3100)

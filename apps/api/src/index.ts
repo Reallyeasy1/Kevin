@@ -1,8 +1,8 @@
 /** Buyer API entrypoint. Config validation runs first and fails fast (NFR-009, SEC-010). */
 import {
   buildCuratedOffers,
-  buildMergedRegistry,
   loadBuyerEnv,
+  loadMergedRegistry,
   settlementAsset,
 } from '@subbuddy/config';
 import { createDb, createRepository, createSpendLedger } from '@subbuddy/database';
@@ -16,8 +16,9 @@ import { Metrics } from './metrics.js';
 
 const env = loadBuyerEnv();
 const asset = settlementAsset(env);
-// FR-021: curated ∪ xrpl-ai.org hub listings; hubStatus surfaces on GET /v1/offers for the UI notice.
-const registry = buildMergedRegistry(env, buildCuratedOffers(env));
+// FR-021: curated ∪ hub listings (live from HUB_URL when set, else the hub-offers.json import); hubStatus
+// surfaces on GET /v1/offers for the UI notice.
+const registry = await loadMergedRegistry(env, buildCuratedOffers(env), { hubUrl: env.HUB_URL });
 const db = createDb(env.DATABASE_URL);
 const ledger = createLedgerClient(env.XRPL_WSS_URL);
 

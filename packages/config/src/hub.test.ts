@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Wallet } from 'xrpl';
 import { XRPL_NETWORKS } from '@subbuddy/contracts';
 import {
@@ -7,7 +7,9 @@ import {
   XrplAiHubRegistry,
   buildCuratedOffers,
   buildMergedRegistry,
+  fetchHubListings,
   loadBuyerEnv,
+  loadMergedRegistry,
 } from './index.js';
 
 const buyer = {
@@ -109,7 +111,13 @@ describe('XrplAiHubRegistry (FR-021)', () => {
 describe('MergedRegistry (FR-021, INV-010, SEC-003)', () => {
   it('empty hub file -> available:false and curated-only', async () => {
     const reg = buildMergedRegistry(env, curated, [], noop);
-    expect(reg.hubStatus).toEqual({ available: false, imported: 0, skipped: 0, reasons: [] });
+    expect(reg.hubStatus).toEqual({
+      available: false,
+      imported: 0,
+      skipped: 0,
+      reasons: [],
+      source: 'import',
+    });
     expect((await reg.listActiveOffers()).map((o) => o.source)).toEqual([
       'curated',
       'curated',
@@ -157,5 +165,95 @@ describe('MergedRegistry (FR-021, INV-010, SEC-003)', () => {
     expect(c.registryVersion).toBe(
       new MergedRegistry(curated, new XrplAiHubRegistry(env, [], noop)).registryVersion,
     );
+  });
+});
+
+describe('live hub discovery (FR-021, SEC-004)', () => {
+  const json = (body: unknown, init?: ResponseInit) =>
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      ...init,
+    });
+  const limits = { timeoutMs: 20, maxBytes: 1024 };
+
+  it('no HUB_URL -> import, no fetch', async () => {
+    const f = vi.fn<typeof fetch>();
+    expect(await fetchHubListings(undefined, f)).toEqual({
+      records: HUB_LISTINGS,
+      source: 'import',
+    });
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('success: live records, trailing slash stripped, invalid records still skipped with reasons', async () => {
+    const f = vi.fn<typeof fetch>(async () =>
+      json([testnetListing, { ...testnetListing, hubServiceId: 'main/x', network: 'xrpl:0' }]),
+    );
+    const reg = await loadMergedRegistry(env, curated, {
+      hubUrl: 'http://hub.test/',
+      fetchImpl: f,
+    });
+    expect(f.mock.calls[0]![0]).toBe('http://hub.test/api/listings');
+    expect(reg.hubStatus).toMatchObject({
+      available: true,
+      imported: 1,
+      skipped: 1,
+      source: 'live',
+    });
+    expect(reg.hubStatus.reasons[0]).toMatch(/main\/x: network xrpl:0/);
+    const hub = (await reg.listActiveOffers()).filter((o) => o.source === 'xrpl-ai-hub');
+    expect(hub.map((o) => o.offerId)).toEqual(['hub:demo/testnet-chat']);
+    expect(reg.getOfferByPath('/v1/chat')?.offerId).toBe('hub:demo/testnet-chat');
+    expect(reg.getOfferByPath('/v1/inference/fast-text-v1')?.offerId).toBe('fast-text-v1');
+  });
+
+  it('timeout -> import fallback, available:false with the reason', async () => {
+    const f: typeof fetch = (_url, init) =>
+      new Promise((_, reject) =>
+        init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason)),
+      );
+    const logs: string[] = [];
+    const reg = await loadMergedRegistry(env, curated, {
+      hubUrl: 'http://hub.test',
+      fetchImpl: f,
+      limits,
+      log: (m) => logs.push(m),
+    });
+    expect(reg.hubStatus).toMatchObject({ available: false, source: 'import' });
+    expect(reg.hubStatus.reasons[0]).toMatch(/timed out after 20 ms.*hub-offers\.json/);
+    expect(reg.hubStatus.skipped).toBe(HUB_LISTINGS.length); // the import records, all Mainnet
+    expect(logs.at(-1)).toMatch(/timed out/);
+  });
+
+  it.each([
+    ['connection refused', async () => Promise.reject(new Error('ECONNREFUSED'))],
+    ['non-2xx', async () => new Response('nope', { status: 503 })],
+    ['not an array', async () => json({ listings: [] })],
+    ['not JSON', async () => new Response('<html>', { status: 200 })],
+    ['oversize body', async () => new Response(new Uint8Array(4096), { status: 200 })],
+    [
+      'oversize content-length',
+      async () => new Response('[]', { status: 200, headers: { 'content-length': '99999' } }),
+    ],
+  ])('%s -> import fallback with reason', async (_name, impl) => {
+    const r = await fetchHubListings('http://hub.test', impl as typeof fetch, limits);
+    expect(r.source).toBe('import');
+    expect(r.records).toBe(HUB_LISTINGS);
+    expect(r.fallbackReason).toMatch(/live hub http:\/\/hub.test\/api\/listings unavailable/);
+  });
+
+  it('a fallback marks the registry unavailable even when the import yields offers', () => {
+    const reg = new XrplAiHubRegistry(env, [testnetListing], noop, {
+      source: 'import',
+      fallbackReason: 'live hub down',
+    });
+    expect(reg.status).toMatchObject({
+      available: false,
+      imported: 1,
+      skipped: 0,
+      source: 'import',
+    });
+    expect(reg.status.reasons).toEqual(['live hub down']);
   });
 });
