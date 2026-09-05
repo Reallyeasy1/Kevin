@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'SubBuddy',
+  title: 'Kevin',
   description: 'Wallet-native AI inference router on XRPL Testnet',
 };
 

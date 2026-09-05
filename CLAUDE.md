@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-SubBuddy is our Singhacks 2026 entry for the Ripple challenge: "Build an AI-Native Business on XRPL". The product is a wallet-native AI inference router: it classifies a prompt, ranks purchasable inference offers, pays the chosen seller through x402 settled on XRPL Testnet, and returns the model response plus a verifiable receipt.
+Kevin is our Singhacks 2026 entry for the Ripple challenge: "Build an AI-Native Business on XRPL". The product is a wallet-native AI inference router: it classifies a prompt, ranks purchasable inference offers, pays the chosen seller through x402 settled on XRPL Testnet, and returns the model response plus a verifiable receipt.
 
 `PRD_SPECS.md` is the source of truth. Every P0 behaviour has a requirement ID (FR, INV, SEC, AT, NFR); reference them in commits. If code and the PRD disagree, the PRD wins until it is deliberately amended. Product code is not scaffolded yet.
 

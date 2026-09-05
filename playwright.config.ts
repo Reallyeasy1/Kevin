@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 // Mocked e2e only (PRD §18.3). Live Testnet smoke tests are manual and never run here.
 // WEB_PORT picks the port the server is started on (default 3000). The server is always started by
-// Playwright so an unrelated app already listening on that port is never mistaken for SubBuddy.
+// Playwright so an unrelated app already listening on that port is never mistaken for Kevin.
 const port = process.env.WEB_PORT ?? '3000';
 const baseURL = `http://localhost:${port}`;
 const web = 'pnpm --filter @subbuddy/web exec next';

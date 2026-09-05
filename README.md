@@ -1,5 +1,5 @@
 # Kevin
-nKevin (codename SubBuddy in package names and paths).
+Kevin (codename SubBuddy in package names and paths).
 
 [![ci](https://github.com/Reallyeasy1/Kevin/actions/workflows/ci.yml/badge.svg)](https://github.com/Reallyeasy1/Kevin/actions/workflows/ci.yml)
 
