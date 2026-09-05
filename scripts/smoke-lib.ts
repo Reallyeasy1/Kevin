@@ -35,6 +35,7 @@ export function parseArgs(argv: readonly string[]): SmokeArgs {
       if (v === undefined) throw new Error(`${a} needs a value`);
       return v;
     };
+    if (a === '--') continue; // pnpm forwards the separator itself
     if (a === '--api') out.apiBase = next().replace(/\/+$/, '');
     else if (a === '--prompt') out.prompt = next();
     else if (a === '--timeout-ms') out.timeoutMs = Number(next());
