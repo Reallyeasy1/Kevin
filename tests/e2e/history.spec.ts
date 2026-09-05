@@ -14,6 +14,8 @@ const page1 = {
       routeId: 'route_h1',
       createdAt: '2026-09-05T00:00:00.000Z',
       state: 'SUCCEEDED',
+      taskType: 'coding',
+      mode: 'balanced',
       sellerName: 'Fast Code',
       quotedCost: '0.006200',
       settledAmount: '0.006200',
@@ -37,6 +39,19 @@ const page1 = {
 };
 const page2 = {
   routes: [
+    {
+      routeId: 'route_h4',
+      createdAt: '2026-09-04T22:30:00.000Z',
+      state: 'PAID_EXECUTION_FAILED',
+      taskType: 'coding',
+      mode: 'fastest',
+      sellerName: 'Fast Code',
+      quotedCost: '0.006200',
+      settledAmount: '0.006200',
+      asset: 'RLUSD',
+      transactionHash: TX,
+      explorerUrl: `https://testnet.xrpl.org/transactions/${TX}`,
+    },
     {
       routeId: 'route_h3',
       createdAt: '2026-09-04T22:00:00.000Z',
@@ -90,6 +105,7 @@ test('lists completed routes with quoted vs settled amounts, explorer links, and
   const first = list.getByRole('listitem').first();
   await expect(first.getByTestId('history-state')).toHaveText('SUCCEEDED');
   await expect(first).toContainText('Fast Code');
+  await expect(first.getByTestId('history-task')).toHaveText('coding · balanced mode');
   await expect(first).toContainText('0.006200 quoted');
   await expect(first).toContainText('0.006200 RLUSD settled');
   const tx = first.getByTestId('history-tx');
@@ -101,11 +117,20 @@ test('lists completed routes with quoted vs settled amounts, explorer links, and
   await expect(second).toContainText('0.025000 quoted');
   await expect(second).toContainText('nothing settled');
   await expect(second.getByTestId('history-tx')).toHaveCount(0);
+  await expect(second.getByTestId('history-task')).toHaveCount(0); // fields absent: label hidden
 
   // Load more by keyboard (NFR-007); the cursor from page 1 is sent back.
   await page.getByRole('button', { name: 'Load more' }).focus();
   await page.keyboard.press('Enter');
-  await expect(list.getByRole('listitem')).toHaveCount(3);
+  await expect(list.getByRole('listitem')).toHaveCount(4);
+  // FR-081 / §13.4: a paid-execution failure is flagged and says payment succeeded but delivery did not.
+  const paidFailed = list.getByRole('listitem').nth(2);
+  await expect(paidFailed.getByTestId('history-state')).toHaveText('⚠ PAID_EXECUTION_FAILED');
+  await expect(paidFailed.getByTestId('history-task')).toHaveText('coding · fastest mode');
+  await expect(paidFailed.getByTestId('history-warning')).toContainText(
+    'Payment was validated, but the seller could not complete inference. No second provider was purchased.',
+  );
+  await expect(first.getByTestId('history-warning')).toHaveCount(0);
   // dev-mode StrictMode may run the initial effect twice; only the latest request matters.
   expect(queries.at(-1)).toBe('?limit=20&cursor=cursor_2');
   await expect(page.getByRole('button', { name: 'Load more' })).toHaveCount(0);
@@ -117,7 +142,7 @@ test('lists completed routes with quoted vs settled amounts, explorer links, and
   expect(overflow).toBeLessThanOrEqual(0);
 
   // Each row links to the read-only route view (US-010).
-  await page.getByRole('link', { name: 'Fast Code' }).focus();
+  await first.getByRole('link', { name: 'Fast Code' }).focus();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/\?route=route_h1$/);
 });

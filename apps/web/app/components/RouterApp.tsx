@@ -5,6 +5,7 @@ import type {
   RouteRequest,
   RouteResponse,
   RouteState,
+  RoutingMode,
   WalletResponse,
 } from '@subbuddy/contracts';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -20,11 +21,13 @@ import {
   type RouteDetail,
 } from '../../src/lib/api';
 import {
+  classifierSourceOf,
   deriveEvidence,
   deriveSelected,
   isTerminal,
   stepStatuses,
   uiStateFor,
+  type FailureCode,
   type UiState,
 } from '../../src/lib/route-ui';
 import { CandidateTable } from './CandidateTable';
@@ -79,8 +82,10 @@ export function RouterApp() {
   const [detail, setDetail] = useState<RouteDetail | null>(null);
   const [events, setEvents] = useState<RouteEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<ApiRequestError['code'] | null>(null);
   const [now, setNow] = useState(0);
   const lastPrompt = useRef('');
+  const lastMode = useRef<RoutingMode | null>(null);
   const abort = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -130,6 +135,18 @@ export function RouterApp() {
   const busy = !SETTLED_UI.has(ui);
   const candidates = route?.candidates ?? detail?.candidates ?? [];
   const asset = wallet?.balances[0]?.asset ?? route?.mandate.asset ?? 'RLUSD';
+  const mode: RoutingMode | null = detail?.mode ?? lastMode.current;
+  const taskProfile = route?.taskProfile ?? detail?.taskProfile ?? null;
+  const classifierSource = classifierSourceOf(route, detail);
+  // §13.4 dedicated copy: SPEND_CAP_REACHED arrives as the API error code; an over-budget quote surfaces as
+  // QUOTE_REJECTED with every quoted candidate rejected for QUOTE_OVER_BUDGET (§14).
+  const failureCode: FailureCode | null =
+    errorCode === 'SPEND_CAP_REACHED'
+      ? 'SPEND_CAP_REACHED'
+      : routeState === 'FAILED' &&
+          candidates.some((c) => c.rejectionReasons.includes('QUOTE_OVER_BUDGET'))
+        ? 'QUOTE_OVER_BUDGET'
+        : null;
 
   const startedAt = events.find((e) => e.type === 'execution.started')?.timestamp;
   useEffect(() => {
@@ -192,11 +209,13 @@ export function RouterApp() {
   async function submit(req: RouteRequest): Promise<void> {
     if (viewRouteId) router.replace('/');
     setError(null);
+    setErrorCode(null);
     setRoute(null);
     setDetail(null);
     setEvents([]);
     setRouteState('CLASSIFYING'); // synchronous first state update (NFR-002)
     lastPrompt.current = req.prompt;
+    lastMode.current = req.mode;
 
     let created: RouteResponse;
     try {
@@ -204,6 +223,7 @@ export function RouterApp() {
     } catch (e) {
       const err = e instanceof ApiRequestError ? e : null;
       setError(err?.message ?? 'Unexpected error.');
+      setErrorCode(err?.code ?? null);
       setRouteState(stateForError(err?.code ?? 'INTERNAL_ERROR'));
       if (err?.routeId) void loadFinal(err.routeId);
       return;
@@ -227,6 +247,7 @@ export function RouterApp() {
     } catch (e) {
       const err = e instanceof ApiRequestError ? e : null;
       setError(err?.message ?? 'Unexpected error.');
+      setErrorCode(err?.code ?? null);
       if (err && err.status >= 400 && err.status < 500 && err.code !== 'NETWORK_ERROR') {
         // The server refused before signing; no money moved.
         setRouteState(stateForError(err.code));
@@ -246,6 +267,7 @@ export function RouterApp() {
     setDetail(null);
     setEvents([]);
     setError(null);
+    setErrorCode(null);
     if (viewRouteId) router.replace('/');
   }
 
@@ -272,11 +294,13 @@ export function RouterApp() {
         selected={selected}
         evidence={evidence}
         elapsedMs={elapsedMs}
+        failureCode={failureCode}
       />
       {failed && routeState && (
         <FailurePanel
           state={routeState}
           message={error}
+          code={failureCode}
           onRouteAgain={routeAgain}
           {...(ui === 'paid_execution_failed' && lastPrompt.current && route
             ? { onRetryDelivery: () => void execute(route.routeId, lastPrompt.current) }
@@ -291,12 +315,22 @@ export function RouterApp() {
           {error}
         </p>
       )}
-      {selected && <SelectedOfferCard selected={selected} route={route} />}
+      {selected && (
+        <SelectedOfferCard
+          selected={selected}
+          route={route}
+          mode={mode}
+          taskProfile={taskProfile}
+          classifierSource={classifierSource}
+        />
+      )}
       {evidence && <PaymentEvidence evidence={evidence} />}
       {(ui === 'succeeded' || ui === 'executing' || ui === 'settled') && (
-        <Answer content={detail?.result ?? null} ui={ui} />
+        <Answer content={detail?.result ?? null} ui={ui} execution={detail?.execution ?? null} />
       )}
-      {detail && <ReceiptDetails detail={detail} evidence={evidence} />}
+      {detail && (
+        <ReceiptDetails detail={detail} evidence={evidence} classifierSource={classifierSource} />
+      )}
       <CandidateTable candidates={candidates} asset={selected?.asset ?? asset} hubUrls={hubUrls} />
     </div>
   );

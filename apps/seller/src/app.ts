@@ -128,6 +128,10 @@ export function createApp(opts: SellerAppOptions) {
   const invoices = new Invoices();
   // FR-080: at most one upstream call per invoice; a failed execution stays failed on replay.
   const executions = new Map<string, Execution>();
+  // ponytail: per-invoice lock so two concurrent paid requests cannot both reach the facilitator; the
+  // middleware reads the invoice before settling and consumes it after. Postgres unique claim on
+  // (invoiceId) if the seller is ever replicated.
+  const inflight = new Map<string, Promise<void>>();
 
   const gateFor = (offer: InferenceOffer, invoiceId: string) =>
     requireX402({
@@ -190,8 +194,30 @@ export function createApp(opts: SellerAppOptions) {
       if (!bound) return fail(res, 400, 'PAYMENT_FAILED', 'unknown invoice');
       if (bound !== binding)
         return fail(res, 409, 'CONFLICT', 'invoice is bound to a different request');
+      const id = invoiceId;
+      const run = (inflight.get(id) ?? Promise.resolve()).then(
+        () => new Promise<void>((release) => paid(offer, id, sig, release)),
+      );
+      inflight.set(id, run);
+      void run.finally(() => {
+        if (inflight.get(id) === run) inflight.delete(id);
+      });
+      return;
+    }
+
+    // The gate answers 402/400/5xx itself; it calls next() only after the facilitator settled (INV-001).
+    gateFor(offer, invoiceId)(req, res, next);
+
+    /** Runs with the per-invoice lock held; `release` must be called once the response is decided. */
+    function paid(
+      offer: InferenceOffer,
+      invoiceId: string,
+      sig: string,
+      release: () => void,
+    ): void {
       const done = executions.get(invoiceId);
       if (done) {
+        release();
         if (done.sigHash !== sha256(sig))
           return fail(
             res,
@@ -204,15 +230,12 @@ export function createApp(opts: SellerAppOptions) {
         void respond(res, done, log);
         return;
       }
-    }
-
-    // The gate answers 402/400/5xx itself; it calls next() only after the facilitator settled (INV-001).
-    gateFor(offer, invoiceId)(req, res, (err?: unknown) => {
-      if (err) return next(err);
-      const settlement = (res.locals['x402'] as { settlement: { transaction: string } }).settlement;
-      // Two concurrent first-paid requests both settle the same blob (one tx hash); the second reuses this entry.
-      let exec = executions.get(invoiceId);
-      if (!exec) {
+      res.once('close', release); // the gate answered 402/400/5xx itself, or the client went away
+      gateFor(offer, invoiceId)(req, res, (err?: unknown) => {
+        release();
+        if (err) return next(err);
+        const settlement = (res.locals['x402'] as { settlement: { transaction: string } })
+          .settlement;
         const started = Date.now();
         const result = upstream
           .complete({
@@ -231,8 +254,8 @@ export function createApp(opts: SellerAppOptions) {
             providerLatencyMs: Date.now() - started,
           }));
         result.catch(() => undefined); // handled by every respond(); this only silences the "unhandled" warning
-        exec = {
-          sigHash: sha256(sig as string),
+        const exec: Execution = {
+          sigHash: sha256(sig),
           paymentResponse: String(res.getHeader(HEADER_PAYMENT_RESPONSE) ?? ''),
           result,
         };
@@ -241,9 +264,9 @@ export function createApp(opts: SellerAppOptions) {
           { invoiceId, transactionHash: settlement.transaction },
           'settled; invoking upstream once',
         );
-      }
-      void respond(res, exec, log);
-    });
+        void respond(res, exec, log);
+      });
+    }
   }
 
   const app = express();

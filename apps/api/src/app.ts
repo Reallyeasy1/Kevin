@@ -192,13 +192,14 @@ export async function buildApp(
     req.raw.on('close', end);
   });
 
-  // §11.6: offer records carry no secrets by construction (FR-020). Each offer carries its `source`;
-  // a hub-backed registry (FR-021 MergedRegistry) also exposes `hubStatus` for the discovery notice.
+  // §11.6: offer records carry no secrets by construction (FR-020). Every record, disabled included, with
+  // its `enabled` state (#60) and `source`; a hub-backed registry (FR-021 MergedRegistry) also exposes
+  // `hubStatus` for the discovery notice.
   app.get('/v1/offers', async () => {
     const hubStatus = (registry as { hubStatus?: unknown }).hubStatus;
     return {
       registryVersion: registry.registryVersion,
-      offers: await registry.listActiveOffers(),
+      offers: registry.allOffers(),
       ...(hubStatus !== undefined ? { hubStatus } : {}),
     };
   });

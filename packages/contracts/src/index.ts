@@ -511,11 +511,21 @@ export const SelectedOffer = z.object({
 });
 export type SelectedOffer = z.infer<typeof SelectedOffer>;
 
+/** FR-010 (#85): which classifier produced the task profile. Additive; absent on routes created before it. */
+export const ClassifierSource = z.enum(['llm', 'fallback']);
+export type ClassifierSource = z.infer<typeof ClassifierSource>;
+const ClassifierFields = {
+  classifierSource: ClassifierSource.optional(),
+  /** Provider model id when `classifierSource === 'llm'`. */
+  classifierModel: z.string().min(1).optional(),
+};
+
 export const RouteResponse = z.object({
   routeId: z.string().min(1),
   state: RouteState,
   expiresAt: IsoTimestamp,
   taskProfile: TaskProfile,
+  ...ClassifierFields,
   selected: SelectedOffer.nullable(),
   candidates: z.array(RouteCandidateView),
   mandate: PublicMandate,
@@ -530,6 +540,7 @@ export const RouteView = Receipt.extend({
   selected: SelectedOffer.nullable(),
   result: z.string().nullable(),
   expiresAt: IsoTimestamp,
+  ...ClassifierFields,
 });
 export type RouteView = z.infer<typeof RouteView>;
 

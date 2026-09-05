@@ -33,10 +33,9 @@ const env = loadSellerEnv({
   SELLER_UPSTREAM_PROVIDER: 'mock',
 });
 
-const facilitator = {
-  verify: vi.fn(async () => ({ isValid: true, payer: PAYER })),
-  settle: vi.fn(async () => ({ success: true, transaction: TX, network: 'xrpl:1', payer: PAYER })),
-};
+const okVerify = async () => ({ isValid: true, payer: PAYER });
+const okSettle = async () => ({ success: true, transaction: TX, network: 'xrpl:1', payer: PAYER });
+const facilitator = { verify: vi.fn(okVerify), settle: vi.fn(okSettle) };
 let modelCalls = 0;
 let failUpstream = false;
 const inner = mockUpstream();
@@ -65,8 +64,8 @@ afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 beforeEach(() => {
   modelCalls = 0;
   failUpstream = false;
-  facilitator.verify.mockClear();
-  facilitator.settle.mockClear();
+  facilitator.verify.mockReset().mockImplementation(okVerify);
+  facilitator.settle.mockReset().mockImplementation(okSettle);
 });
 
 const errorOf = async (res: Response) =>
@@ -150,6 +149,27 @@ describe('POST /v1/inference/:offerId (AT-012)', () => {
 
     // An unpaid re-request of a paid invoice must not mint a fresh 402 for the same invoice id.
     expect((await post('fast-text-v1', body)).status).toBe(409);
+  });
+
+  it('serialises concurrent paid requests per invoice: one settlement, one model call, identical replies (FR-080)', async () => {
+    const b = { requestId: 'req_race', prompt: 'race me' };
+    const { sig } = await quote('fast-text-v1', b);
+    // Slow facilitator so both requests are in flight before either settles.
+    facilitator.verify.mockImplementation(
+      () => new Promise((r) => setTimeout(() => r({ isValid: true, payer: PAYER }), 50)),
+    );
+    const [a, c] = await Promise.all([
+      post('fast-text-v1', b, { [HEADER_PAYMENT_SIGNATURE]: sig }),
+      post('fast-text-v1', b, { [HEADER_PAYMENT_SIGNATURE]: sig }),
+    ]);
+    expect(a.status).toBe(200);
+    expect(c.status).toBe(200);
+    expect(await c.json()).toEqual(await a.json());
+    expect(a.headers.get(HEADER_PAYMENT_RESPONSE)).toBeTruthy();
+    expect(c.headers.get(HEADER_PAYMENT_RESPONSE)).toBe(a.headers.get(HEADER_PAYMENT_RESPONSE));
+    expect(modelCalls).toBe(1);
+    expect(facilitator.verify).toHaveBeenCalledTimes(1);
+    expect(facilitator.settle).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a malformed PAYMENT-SIGNATURE without touching the facilitator or the model', async () => {

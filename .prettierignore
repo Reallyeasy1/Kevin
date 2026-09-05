@@ -8,3 +8,4 @@ ripple
 PRD_SPECS.md
 *.md
 packages/database/src/generated/
+.next-*

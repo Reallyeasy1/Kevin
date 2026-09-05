@@ -62,6 +62,15 @@ describe('POST /v1/routes (§11.2)', () => {
     expect(byId['fast-text-v1'].eligibility).toBe('ineligible');
   });
 
+  it('#85 / FR-010: classifierSource is on the create response and the receipt', async () => {
+    const h = await harness();
+    const created = (await h.route()).json();
+    expect(created.classifierSource).toBe('fallback');
+    expect(created.classifierModel).toBeUndefined();
+    const view = (await h.get(created.routeId)).json();
+    expect(view.classifierSource).toBe('fallback');
+  });
+
   it('AT-002: no offer within budget ends NO_ELIGIBLE_OFFER without quoting or signing', async () => {
     const h = await harness();
     const res = await h.route({ maxCost: '0.001000' });
@@ -280,6 +289,28 @@ describe('POST /v1/routes/:id/execute (§11.3, §9.1)', () => {
     expect(h.signer.signExactPayment).not.toHaveBeenCalled();
   });
 
+  it('#66 / §14: a signer failure after approval ends PAYMENT_FAILED, nothing submitted', async () => {
+    const h = await harness();
+    h.signer.signExactPayment.mockRejectedValueOnce(
+      new PaymentError('SIGNER_UNAVAILABLE', 'ledger down', { retryable: true }),
+    );
+    const { routeId } = (await h.route()).json();
+    expect((await h.execute(routeId)).statusCode).toBe(202);
+    expect(await h.terminal(routeId)).toBe('PAYMENT_FAILED');
+    const view = (await h.get(routeId)).json();
+    expect(view.state).toBe('PAYMENT_FAILED');
+    expect(view.payment).toMatchObject({
+      status: 'CREATED',
+      transactionHash: null,
+      failureCode: 'signer_unavailable',
+    });
+    expect(h.payments.payAndRetry).not.toHaveBeenCalled();
+    expect(h.events.replay(routeId).at(-1)).toMatchObject({
+      type: 'route.failed',
+      payload: { code: 'PAYMENT_FAILED' },
+    });
+  });
+
   it('FR-081 / AT-007: settled but not served ends PAID_EXECUTION_FAILED with no reroute', async () => {
     const h = await harness();
     h.payments.payAndRetry.mockRejectedValue(
@@ -353,6 +384,7 @@ describe('GET /v1/offers and /v1/wallet (§11.6, §11.7)', () => {
       'fast-code-v1',
       'fast-text-v1',
     ]);
+    expect(offers.offers.every((o: { enabled: boolean }) => o.enabled === true)).toBe(true);
     const wallet = (await h.app.inject({ method: 'GET', url: '/v1/wallet', headers: AUTH })).json();
     expect(wallet).toEqual({
       address: WALLET,
@@ -363,5 +395,19 @@ describe('GET /v1/offers and /v1/wallet (§11.6, §11.7)', () => {
       ],
     });
     expect(Object.keys(wallet)).toEqual(['address', 'network', 'balances']);
+  });
+
+  it('#60: disabled offers are listed with enabled:false and never routed to', async () => {
+    const h = await harness({ disableOffer: 'fast-code-v1' });
+    const offers = (await h.app.inject({ method: 'GET', url: '/v1/offers', headers: AUTH })).json();
+    expect(
+      offers.offers.map((o: { offerId: string; enabled: boolean }) => [o.offerId, o.enabled]),
+    ).toEqual([
+      ['deep-reasoning-v1', true],
+      ['fast-code-v1', false],
+      ['fast-text-v1', true],
+    ]);
+    const created = (await h.route()).json();
+    expect(created.selected.offerId).not.toBe('fast-code-v1');
   });
 });

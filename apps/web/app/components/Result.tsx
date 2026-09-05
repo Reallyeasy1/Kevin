@@ -1,35 +1,85 @@
 'use client';
 
-import type { RouteResponse, RouteState } from '@subbuddy/contracts';
+import type {
+  ExecutionReceipt,
+  RouteResponse,
+  RouteState,
+  RoutingMode,
+  TaskProfile,
+} from '@subbuddy/contracts';
 import { useState } from 'react';
 import type { RouteDetail } from '../../src/lib/api';
 import {
+  classifierLabel,
   failureCopy,
   networkLabel,
   shortHash,
   type EvidenceView,
+  type FailureCode,
   type SelectedView,
   type UiState,
 } from '../../src/lib/route-ui';
 
 const card = 'rounded-lg border border-neutral-200 bg-white p-4';
 
+/** FR-010 task type plus, when the API reports it, which classifier produced it. */
+export function TaskLabel({
+  taskProfile,
+  classifierSource,
+}: {
+  taskProfile: TaskProfile;
+  classifierSource: unknown;
+}) {
+  const cls = classifierLabel(classifierSource);
+  return (
+    <span data-testid="task-type">
+      {taskProfile.taskType} · {taskProfile.reasoningLevel} reasoning
+      {cls && (
+        <span className="ml-1 text-xs text-neutral-500" data-testid="classifier-source">
+          ({cls})
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function SelectedOfferCard({
   selected,
   route,
+  mode,
+  taskProfile,
+  classifierSource,
 }: {
   selected: SelectedView;
   route: RouteResponse | null;
+  mode: RoutingMode | null;
+  taskProfile: TaskProfile | null;
+  classifierSource: unknown;
 }) {
   return (
     <section aria-label="Selected offer" className={card} data-testid="selected-offer">
-      <h2 className="text-sm font-semibold">Selected offer</h2>
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-sm font-semibold">Selected offer</h2>
+        {mode && (
+          <span
+            className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium capitalize text-indigo-800"
+            data-testid="routing-mode"
+          >
+            {mode} mode
+          </span>
+        )}
+      </div>
       <p className="mt-1 text-base font-medium">
         {selected.sellerName}
         {selected.modelId && (
           <span className="ml-2 font-mono text-xs text-neutral-500">{selected.modelId}</span>
         )}
       </p>
+      {taskProfile && (
+        <p className="mt-1 text-sm text-neutral-700">
+          Task: <TaskLabel taskProfile={taskProfile} classifierSource={classifierSource} />
+        </p>
+      )}
       <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
         <dt className="text-neutral-500">Score</dt>
         <dd className="font-mono">{selected.score ?? '—'}</dd>
@@ -139,15 +189,17 @@ export function PaymentEvidence({ evidence }: { evidence: EvidenceView }) {
 export function FailurePanel({
   state,
   message,
+  code = null,
   onRouteAgain,
   onRetryDelivery,
 }: {
   state: RouteState;
   message: string | null;
+  code?: FailureCode | null;
   onRouteAgain: () => void;
   onRetryDelivery?: () => void;
 }) {
-  const copy = failureCopy(state, message);
+  const copy = failureCopy(state, message, code);
   const paid = copy.moneyMoved;
   return (
     <section
@@ -204,9 +256,11 @@ function Row({ k, v }: { k: string; v: string | number | null | undefined }) {
 export function ReceiptDetails({
   detail,
   evidence,
+  classifierSource,
 }: {
   detail: RouteDetail;
   evidence: EvidenceView | null;
+  classifierSource: unknown;
 }) {
   const sel = detail.candidates.find((c) => c.offerId === detail.selectedOfferId);
   return (
@@ -219,7 +273,9 @@ export function ReceiptDetails({
         <Row k="Prompt hash" v={detail.promptHash} />
         <Row
           k="Task"
-          v={`${detail.taskProfile.taskType} · ${detail.taskProfile.reasoningLevel} reasoning · confidence ${detail.taskProfile.confidence}`}
+          v={`${detail.taskProfile.taskType} · ${detail.taskProfile.reasoningLevel} reasoning · confidence ${detail.taskProfile.confidence}${
+            classifierLabel(classifierSource) ? ` · ${classifierLabel(classifierSource)}` : ''
+          }`}
         />
         <Row k="Mode" v={detail.mode} />
         <Row k="State" v={detail.state} />
@@ -264,12 +320,35 @@ export function ReceiptDetails({
   );
 }
 
-export function Answer({ content, ui }: { content: string | null; ui: UiState }) {
+export function Answer({
+  content,
+  ui,
+  execution,
+}: {
+  content: string | null;
+  ui: UiState;
+  execution: ExecutionReceipt | null;
+}) {
+  // US-005: usage and provider latency from the execution receipt (§12.5); each is null when the seller omitted it.
+  const usage = execution
+    ? [
+        execution.inputTokens !== null ? `${execution.inputTokens} input tokens` : null,
+        execution.outputTokens !== null ? `${execution.outputTokens} output tokens` : null,
+        execution.latencyMs !== null ? `${execution.latencyMs} ms provider latency` : null,
+      ].filter((s): s is string => s !== null)
+    : [];
   return (
     <section aria-label="Answer" className={card} data-testid="answer">
       <h2 className="text-sm font-semibold">Answer</h2>
       {content ? (
-        <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-sm">{content}</pre>
+        <>
+          <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-sm">{content}</pre>
+          {usage.length > 0 && (
+            <p className="mt-2 font-mono text-xs text-neutral-500" data-testid="usage">
+              {usage.join(' · ')}
+            </p>
+          )}
+        </>
       ) : (
         <p className="mt-2 text-sm text-neutral-500" role="status">
           {ui === 'succeeded' ? 'Retrieving the result…' : 'Waiting for the seller…'}

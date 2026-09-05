@@ -36,6 +36,8 @@ describe('normalizeRouteList (US-010)', () => {
           routeId: 'r1',
           createdAt: '2026-09-05T00:00:00Z',
           state: 'SUCCEEDED',
+          taskType: 'coding',
+          mode: 'balanced',
           sellerName: 'Fast Code',
           quotedCost: '0.006200',
           settledAmount: '0.006200',
@@ -55,6 +57,8 @@ describe('normalizeRouteList (US-010)', () => {
     });
     expect(out.nextCursor).toBe('c2');
     expect(out.routes.map((r) => r.routeId)).toEqual(['r1', 'r2']);
+    expect(out.routes[0]).toMatchObject({ taskType: 'coding', mode: 'balanced' });
+    expect(out.routes[1]).toMatchObject({ taskType: null, mode: null });
     expect(out.routes[0]?.explorerUrl).toBe(`https://testnet.xrpl.org/transactions/${tx}`);
     expect(out.routes[1]).toMatchObject({
       sellerName: 'Deep',

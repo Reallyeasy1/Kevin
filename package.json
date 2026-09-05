@@ -21,7 +21,9 @@
     "db:down": "docker compose down",
     "postinstall": "pnpm generate",
     "generate": "pnpm --filter @subbuddy/database generate",
-    "smoke:testnet": "node scripts/with-env.mjs tsx scripts/smoke-testnet.ts"
+    "smoke:testnet": "node scripts/with-env.mjs tsx scripts/smoke-testnet.ts",
+    "demo": "node scripts/with-env.mjs node scripts/demo.mjs",
+    "fund:testnet": "node scripts/with-env.mjs tsx scripts/fund-testnet.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

@@ -4,6 +4,7 @@
  */
 import {
   ROUTE_STATES,
+  ROUTING_MODES,
   type ApiError,
   type ExecuteResponse,
   type OffersResponse,
@@ -12,6 +13,7 @@ import {
   type RouteResponse,
   type RouteState,
   type RouteView,
+  type RoutingMode,
   type WalletResponse,
 } from '@subbuddy/contracts';
 
@@ -36,6 +38,9 @@ export interface RouteListItem {
   routeId: string;
   createdAt: string;
   state: RouteState;
+  /** Absent from older API builds; the row hides the label when null. */
+  taskType: string | null;
+  mode: RoutingMode | null;
   sellerName: string | null;
   quotedCost: string | null;
   settledAmount: string | null;
@@ -64,11 +69,18 @@ export function normalizeRouteList(raw: unknown): RouteList {
     if (!routeId || !isRouteState(state)) continue;
     const sel = (r.selected ?? null) as Record<string, unknown> | null;
     const pay = (r.payment ?? null) as Record<string, unknown> | null;
+    const tp = (r.taskProfile ?? null) as Record<string, unknown> | null;
+    const mode = r.mode;
     const hash = str(r.transactionHash) ?? str(pay?.transactionHash);
     routes.push({
       routeId,
       createdAt: str(r.createdAt) ?? str(r.updatedAt) ?? '',
       state,
+      taskType: str(r.taskType) ?? str(tp?.taskType),
+      mode:
+        typeof mode === 'string' && (ROUTING_MODES as readonly string[]).includes(mode)
+          ? (mode as RoutingMode)
+          : null,
       sellerName:
         str(r.sellerName) ?? str(sel?.sellerName) ?? str(r.selectedOfferId) ?? str(sel?.offerId),
       quotedCost: str(r.quotedCost) ?? str(sel?.quotedCost),

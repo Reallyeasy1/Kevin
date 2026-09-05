@@ -36,14 +36,6 @@ const STATUS: Record<CandidateEligibility, { label: string; cls: string }> = {
   not_quoted: { label: 'Not quoted', cls: 'bg-amber-100 text-amber-800' },
 };
 
-const ORDER: Record<CandidateEligibility, number> = {
-  selected: 0,
-  quote_rejected: 1,
-  eligible: 2,
-  not_quoted: 3,
-  ineligible: 4,
-};
-
 function Num({ v }: { v: string | null }) {
   return <td className="px-2 py-1 text-right font-mono text-xs">{v ?? '—'}</td>;
 }
@@ -60,11 +52,8 @@ export function CandidateTable({
   hubUrls?: Record<string, string>;
 }) {
   if (candidates.length === 0) return null;
-  const rows = [...candidates].sort(
-    (a, b) =>
-      ORDER[a.eligibility] - ORDER[b.eligibility] ||
-      (b.finalScore ?? '').localeCompare(a.finalScore ?? ''),
-  );
+  // US-003: the API already orders candidates by rank (scored first, ineligible last, INV-010); keep that order.
+  const rows = candidates;
   return (
     <section
       aria-label="Candidate comparison"
@@ -76,6 +65,7 @@ export function CandidateTable({
         <table className="w-full min-w-[620px] text-sm" data-testid="candidates">
           <thead className="text-left text-xs text-neutral-500">
             <tr>
+              <th className="px-2 py-1 text-right">#</th>
               <th className="px-2 py-1">Offer</th>
               <th className="px-2 py-1">Source</th>
               <th className="px-2 py-1 text-right">Task quality</th>
@@ -87,8 +77,9 @@ export function CandidateTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((c) => (
+            {rows.map((c, i) => (
               <tr key={c.offerId} className="border-t border-neutral-100">
+                <td className="px-2 py-1 text-right font-mono text-xs text-neutral-500">{i + 1}</td>
                 <td className="px-2 py-1">
                   <span className="font-medium">{c.displayName}</span>
                   {c.rejectionReasons.length > 0 && (

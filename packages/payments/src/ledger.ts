@@ -37,6 +37,8 @@ export interface BackoffOptions {
   maxMs?: number;
   retryOn?: (err: unknown) => boolean;
   sleep?: (ms: number) => Promise<void>;
+  /** Wall-clock budget from the first attempt; no retry starts that would end past it (#67, §14). */
+  deadlineMs?: number;
 }
 
 const defaultSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -47,12 +49,15 @@ export async function withBackoff<T>(fn: () => Promise<T>, opts: BackoffOptions 
   const baseMs = opts.baseMs ?? 250;
   const maxMs = opts.maxMs ?? 4_000;
   const sleep = opts.sleep ?? defaultSleep;
+  const deadline = opts.deadlineMs === undefined ? Infinity : Date.now() + opts.deadlineMs;
   for (let attempt = 0; ; attempt++) {
     try {
       return await fn();
     } catch (err) {
       if (attempt >= retries || (opts.retryOn && !opts.retryOn(err))) throw err;
-      await sleep(Math.min(maxMs, baseMs * 2 ** attempt));
+      const delay = Math.min(maxMs, baseMs * 2 ** attempt);
+      if (Date.now() + delay > deadline) throw err;
+      await sleep(delay);
     }
   }
 }

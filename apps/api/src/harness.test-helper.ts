@@ -88,6 +88,8 @@ export interface HarnessOptions {
   db?: ReturnType<typeof createFakeDb>;
   /** Extra clones of the top coding offer, so eligible offers can outnumber MAX_QUOTE_ATTEMPTS. */
   extraOffers?: number;
+  /** Mark this curated offer `enabled: false` (#60). */
+  disableOffer?: string;
 }
 
 export async function harness(over: HarnessOptions = {}) {
@@ -99,7 +101,11 @@ export async function harness(over: HarnessOptions = {}) {
     offerId: `clone-${i}`,
     endpoint: `${env.SELLER_BASE_URL}/v1/inference/clone-${i}`,
   }));
-  const registry = new CuratedRegistry([...base, ...clones]);
+  const registry = new CuratedRegistry(
+    [...base, ...clones].map((o) =>
+      o.offerId === over.disableOffer ? { ...o, enabled: false } : o,
+    ),
+  );
   const events = new RouteEvents();
   const metrics = new Metrics();
   const payments = {

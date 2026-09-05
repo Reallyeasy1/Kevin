@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { parseSse } from './api.js';
-import { failureCopy, paymentStatusLabel, stepStatuses, uiStateFor } from './route-ui.js';
+import {
+  classifierLabel,
+  classifierSourceOf,
+  failureCopy,
+  paymentStatusLabel,
+  stepStatuses,
+  uiStateFor,
+} from './route-ui.js';
 
 describe('uiStateFor (PRD §13.2)', () => {
   it('maps every route state to one of the eleven UI states', () => {
@@ -57,6 +64,21 @@ describe('failureCopy (PRD §13.4, FR-081)', () => {
     }
   });
 
+  it('has dedicated copy for the spend cap and over-budget quotes: no money moved, what to change', () => {
+    const cap = failureCopy('POLICY_REJECTED', null, 'SPEND_CAP_REACHED');
+    expect(cap.title).toMatch(/spend cap/i);
+    expect(cap.moneyMoved).toBe(false);
+    expect(cap.body).toMatch(/no money moved/i);
+    expect(cap.body).toMatch(/wait for the rolling hour/i);
+    expect(cap.body).toMatch(/lower the max cost/i);
+    const over = failureCopy('FAILED', 'quote exceeds budget', 'QUOTE_OVER_BUDGET');
+    expect(over.title).toMatch(/max cost/i);
+    expect(over.moneyMoved).toBe(false);
+    expect(over.body).toMatch(/no money moved/i);
+    expect(over.body).toMatch(/raise the max cost/i);
+    expect(over.body).toContain('quote exceeds budget');
+  });
+
   it('never labels a payment validated unless SETTLED', () => {
     expect(paymentStatusLabel('SENT', false)).toBe('Pending');
     expect(paymentStatusLabel('OUTCOME_UNKNOWN', false)).toBe('Pending');
@@ -81,5 +103,17 @@ describe('parseSse', () => {
     expect(events).toHaveLength(1);
     expect(events[0]?.payload.transactionHash).toBe('ABC');
     expect(rest).toBe('data: {"partial":');
+  });
+});
+
+describe('classifierLabel (FR-010)', () => {
+  it('labels llm and fallback, and shows nothing when the API omits the field', () => {
+    expect(classifierLabel('llm')).toBe('classified by LLM');
+    expect(classifierLabel('fallback')).toBe('fallback heuristic');
+    expect(classifierLabel(undefined)).toBeNull();
+    expect(classifierLabel('anything-else')).toBeNull();
+    expect(classifierSourceOf(null, { taskProfile: { classifierSource: 'llm' } })).toBe('llm');
+    expect(classifierSourceOf({ classifierSource: 'fallback' }, null)).toBe('fallback');
+    expect(classifierSourceOf({ taskProfile: {} }, null)).toBeUndefined();
   });
 });

@@ -11,7 +11,9 @@ export const ROUTE_TRANSITIONS: Readonly<Record<RouteState, readonly RouteState[
   ROUTING: ['QUOTING', 'NO_ELIGIBLE_OFFER'],
   QUOTING: ['QUOTED', 'FAILED'],
   QUOTED: ['POLICY_APPROVED', 'POLICY_REJECTED'],
-  POLICY_APPROVED: ['SIGNED'],
+  // PAYMENT_FAILED: signer unavailable / insufficient balance after approval (#66, §14). Nothing was signed
+  // or submitted, so the route must not strand in POLICY_APPROVED; §9.1 lacked the edge.
+  POLICY_APPROVED: ['SIGNED', 'PAYMENT_FAILED'],
   SIGNED: ['PAID_REQUEST_SENT'],
   PAID_REQUEST_SENT: ['VERIFYING', 'PAYMENT_FAILED', 'OUTCOME_UNKNOWN'],
   OUTCOME_UNKNOWN: ['VERIFYING', 'PAYMENT_FAILED'],

@@ -21,6 +21,8 @@ import {
   type ExecuteResponse,
   type InferenceOffer,
   PaymentRequirement as PaymentRequirementSchema,
+  ClassifierSource as ClassifierSourceSchema,
+  type ClassifierSource,
   type PaymentClient,
   type PaymentRequirement,
   type PaymentState,
@@ -45,6 +47,7 @@ import {
   assertExactMatchesRequirement,
   classifySettlement,
   toExactPayment,
+  withBackoff,
 } from '@subbuddy/payments';
 import {
   explainSelection,
@@ -76,6 +79,8 @@ export interface ServiceConfig {
   quoteHeadroomSeconds?: number;
   /** Ledger polls while VERIFYING; bounded exponential backoff (§14). */
   maxResolveAttempts?: number;
+  /** Wall-clock cap on VERIFYING ledger polling (#67). Default 5 minutes. */
+  resolveDeadlineMs?: number;
 }
 
 export interface ServiceDeps {
@@ -105,11 +110,12 @@ export interface PolicyDecision {
 }
 
 /** Receipt plus the fields the UI needs that the FR-090 list leaves implicit (§11.4 "final result"). */
-export type RouteView = Receipt & {
-  selected: SelectedOffer | null;
-  result: string | null;
-  expiresAt: string;
-};
+export type RouteView = Receipt &
+  ClassifierTelemetry & {
+    selected: SelectedOffer | null;
+    result: string | null;
+    expiresAt: string;
+  };
 
 /** GET /v1/routes (US-010): one row per completed route, receipt-level fields only (SEC-009). */
 export interface RouteListItem {
@@ -128,6 +134,9 @@ export interface RouteListPage {
   routes: RouteListItem[];
   nextCursor: string | null;
 }
+
+/** FR-010 (#85): additive classifier provenance on §11.2 / §11.4 responses. */
+type ClassifierTelemetry = { classifierSource?: ClassifierSource; classifierModel?: string };
 
 interface Ctx {
   routeId: string;
@@ -210,6 +219,7 @@ export class RouteService {
 
     // FR-010/FR-011: the classifier falls back internally; anything escaping is a hard failure.
     let profile: TaskProfile;
+    let classifier: ClassifierTelemetry = {};
     try {
       const input = {
         prompt: req.prompt,
@@ -224,6 +234,10 @@ export class RouteService {
       if (detailed.classifyDetailed) {
         const { profile: p, ...telemetry } = await detailed.classifyDetailed(input);
         profile = p;
+        classifier = {
+          classifierSource: telemetry.source,
+          ...(telemetry.model ? { classifierModel: telemetry.model } : {}),
+        };
         metrics.classified(telemetry.source);
         ctx.log.info({ classifier: telemetry }, 'classified');
       } else {
@@ -237,7 +251,9 @@ export class RouteService {
         retryable: true,
       });
     }
-    await repo.updateRoute(ctx.routeId, { taskProfile: profile });
+    // ponytail: classifier telemetry rides in the taskProfile Json (TaskProfile.parse strips it on read);
+    // add Route.classifierSource columns if it ever needs to be queried.
+    await repo.updateRoute(ctx.routeId, { taskProfile: { ...profile, ...classifier } });
     await this.transition(ctx, 'ROUTING', { taskType: profile.taskType });
 
     // FR-030 + FR-002: the mandate allowlist is the registry's seller set.
@@ -278,6 +294,7 @@ export class RouteService {
         state: 'NO_ELIGIBLE_OFFER',
         expiresAt: mandate.expiresAt,
         taskProfile: profile,
+        ...classifier,
         selected: null,
         candidates: this.candidateViews(ineligible, null),
         mandate,
@@ -402,6 +419,7 @@ export class RouteService {
       state: 'QUOTED',
       expiresAt: mandate.expiresAt,
       taskProfile: profile,
+      ...classifier,
       selected: {
         offerId: cand.offer.offerId,
         sellerName: cand.offer.displayName,
@@ -615,13 +633,18 @@ export class RouteService {
       assertExactMatchesRequirement(exact, requirement);
       signed = await signer.signExactPayment(exact);
     } catch (err) {
-      // §14: signer unavailable / insufficient balance stops here; nothing was submitted. §9.1 has no exit
-      // from POLICY_APPROVED, so the route stays there and the payment row records why.
-      const code = err instanceof PaymentError ? err.code : 'SIGNER_UNAVAILABLE';
+      // §14 / #66: signer unavailable / insufficient balance stops here; nothing was signed or submitted.
+      // The payment row stays CREATED with the reason; the route ends PAYMENT_FAILED rather than stranding.
+      const code =
+        err instanceof PaymentError && err.code === 'INSUFFICIENT_BALANCE'
+          ? 'insufficient_balance'
+          : 'signer_unavailable';
       await repo.updatePayment(paymentId, { failureCode: code });
-      ctx.log.warn({ code }, 'signing aborted');
+      ctx.log.warn({ code, err }, 'signing aborted');
+      metrics.payment.failure += 1;
+      await this.transition(ctx, 'PAYMENT_FAILED', { failureCode: code });
       events.emit(ctx.routeId, 'route.failed', ctx.state, {
-        code: 'POLICY_REJECTED',
+        code: 'PAYMENT_FAILED',
         message: 'Payment could not be signed. No money moved.',
       });
       return;
@@ -739,21 +762,31 @@ export class RouteService {
     | { kind: 'SETTLED'; ledgerIndex: number; validatedAt: string }
     | { kind: 'VALIDATED_FAILED'; resultCode: string }
   > {
-    const max = this.d.config.maxResolveAttempts ?? 30;
-    for (let attempt = 0; attempt < max; attempt++) {
-      const fact = await this.d.payments.resolveTransaction(signed.transactionHash);
-      const cls = classifySettlement(fact, signed.lastLedgerSequence);
-      if (cls === 'SETTLED' && fact.status === 'validated')
-        return { kind: 'SETTLED', ledgerIndex: fact.ledgerIndex, validatedAt: fact.validatedAt };
-      if (cls === 'VALIDATED_FAILED')
-        return {
-          kind: 'VALIDATED_FAILED',
-          resultCode: fact.status === 'validated' ? fact.resultCode : 'NOT_FOUND_AFTER_LAST_LEDGER',
-        };
-      await this.sleep(Math.min(8_000, 1_000 * 2 ** attempt));
-    }
-    // Ledger unreachable for the whole window: stay VERIFYING rather than guess (NFR-003 no false success).
-    throw new Error('settlement unresolved after bounded polling');
+    // #67: bounded by attempts AND wall clock, so VERIFYING can never spin forever. If the window closes
+    // unresolved the route stays VERIFYING rather than guess (NFR-003 no false success).
+    const unresolved = new Error('settlement unresolved after bounded polling');
+    return withBackoff(
+      async () => {
+        const fact = await this.d.payments.resolveTransaction(signed.transactionHash);
+        const cls = classifySettlement(fact, signed.lastLedgerSequence);
+        if (cls === 'SETTLED' && fact.status === 'validated')
+          return { kind: 'SETTLED', ledgerIndex: fact.ledgerIndex, validatedAt: fact.validatedAt };
+        if (cls === 'VALIDATED_FAILED')
+          return {
+            kind: 'VALIDATED_FAILED',
+            resultCode:
+              fact.status === 'validated' ? fact.resultCode : 'NOT_FOUND_AFTER_LAST_LEDGER',
+          };
+        throw unresolved;
+      },
+      {
+        retries: (this.d.config.maxResolveAttempts ?? 30) - 1,
+        baseMs: 1_000,
+        maxMs: 8_000,
+        deadlineMs: this.d.config.resolveDeadlineMs ?? 300_000,
+        sleep: this.sleep,
+      },
+    );
   }
 
   // ---------------------------------------------------------------------------------------------------
@@ -766,6 +799,16 @@ export class RouteService {
     const { registry, config } = this.d;
     const parsed = TaskProfileSchema.safeParse(r.taskProfile);
     const taskProfile = parsed.success ? parsed.data : FALLBACK_TASK_PROFILE;
+    const stored = (r.taskProfile ?? {}) as Record<string, unknown>;
+    const source = ClassifierSourceSchema.safeParse(stored.classifierSource);
+    const classifier: ClassifierTelemetry = source.success
+      ? {
+          classifierSource: source.data,
+          ...(typeof stored.classifierModel === 'string'
+            ? { classifierModel: stored.classifierModel }
+            : {}),
+        }
+      : {};
     // Postgres returns Decimal(20,6) padded; the in-memory fake does not. Normalise so clients see 6 dp always.
     const money6 = (v: string | null | undefined): string | null =>
       v == null ? null : new Decimal(v).toFixed(6);
@@ -792,6 +835,7 @@ export class RouteService {
       routeId: r.id,
       promptHash: r.promptHash,
       taskProfile,
+      ...classifier,
       mode: r.mode,
       state: r.state,
       candidates,

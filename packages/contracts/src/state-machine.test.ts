@@ -30,6 +30,11 @@ describe('state machines (§9)', () => {
     expect(() => assertRouteTransition('QUOTED', 'SIGNED')).toThrow(/illegal route transition/);
   });
 
+  it('#66: a signer failure after approval ends PAYMENT_FAILED instead of stranding (§14)', () => {
+    expect(canTransitionRoute('POLICY_APPROVED', 'PAYMENT_FAILED')).toBe(true);
+    expect(ROUTE_TRANSITIONS.POLICY_APPROVED).toEqual(['SIGNED', 'PAYMENT_FAILED']);
+  });
+
   it('reaches SETTLED only from a sent payment and never re-signs (INV-009, INV-011)', () => {
     for (const from of PAYMENT_STATES) {
       expect(canTransitionPayment(from, 'SETTLED')).toBe(

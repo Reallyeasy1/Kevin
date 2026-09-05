@@ -1,5 +1,7 @@
 # SubBuddy
 
+[![ci](https://github.com/Reallyeasy1/Kevin/actions/workflows/ci.yml/badge.svg)](https://github.com/Reallyeasy1/Kevin/actions/workflows/ci.yml)
+
 **One wallet. The right model for every task. Pay only when it is used.**
 
 SubBuddy is a wallet-native AI inference router built for the Singhacks 2026 Ripple challenge, "Build an AI-Native Business on XRPL". A user (or, later, an agent) submits a prompt and a maximum spend. The agent classifies the task, compares purchasable inference offers, selects one under a request-scoped mandate, pays the seller through x402 settled on XRPL Testnet, and returns the model response together with a verifiable economic receipt.
@@ -110,6 +112,8 @@ Startup fails fast if `APP_ENV=hackathon` and any XRPL setting points at Mainnet
 
 You need two Testnet accounts: the agent (buyer) wallet and the seller wallet. Both need XRP for reserves and fees; both need an RLUSD trust line to the Testnet issuer, and the agent wallet needs an RLUSD balance.
 
+Shortcut: `pnpm fund:testnet` does steps 1 and 3 for both wallets and writes the seeds only to a gitignored `testnet-wallets.local.json`; you still fetch RLUSD (step 2) yourself.
+
 1. Create and fund both accounts with Testnet XRP at the [XRP Testnet faucet](https://faucet.altnet.rippletest.net/) (or `xrpl.js` `client.fundWallet()`). Keep the seeds out of source; the agent seed goes in `.env` only.
 2. Get Testnet RLUSD for the agent wallet from the [RLUSD Testnet faucet, tryrlusd.com](https://tryrlusd.com/) (listed in [ripple/resources.md](ripple/resources.md)). The faucet page shows the Testnet issuer address; copy it into `RLUSD_ISSUER`.
 3. Set an RLUSD trust line from each wallet to the issuer. Receiving an issued currency requires one, so the seller cannot be paid without it:
@@ -132,7 +136,7 @@ Fallback: set `SETTLEMENT_ASSET=XRP` to settle in Testnet XRP with no trust line
 
 ## Run
 
-Three processes, three terminals. Buyer and seller always talk over HTTP; the seller is never called in-process.
+Three processes, three terminals. Buyer and seller always talk over HTTP; the seller is never called in-process. Shortcut: `pnpm demo` (scripts/demo.mjs) starts Postgres, migrates, and runs all three with prefixed logs in one terminal; Ctrl+C stops them all.
 
 ```bash
 pnpm dev:seller   # http://localhost:4020, x402 gate + facilitator
@@ -146,7 +150,7 @@ With `CLASSIFIER_PROVIDER=mock` and `SELLER_UPSTREAM_PROVIDER=mock` (the default
 
 ```bash
 pnpm test         # Vitest: unit, mocked integration and PRD §17 acceptance tests, no network
-pnpm test:e2e     # Playwright: mocked route and /history flows through the real UI
+pnpm test:e2e     # Playwright: mocked route and /history flows through the real UI (WEB_PORT=3177 if 3000 is busy)
 pnpm typecheck    # all packages, scripts/ and tests/
 pnpm lint
 ```
@@ -180,6 +184,8 @@ The UI walk-through:
 
 ## Demo script (PRD §22)
 
+Presenter checklist with exact commands, per-step expected screen state, and an "if something breaks" table: [docs/DEMO.md](docs/DEMO.md). The market the router draws from is the [XRPL AI Hub](https://xrpl-ai.org/), the live x402 directory with 1,700+ registered providers; its listings are Mainnet, so on Testnet three curated offers stand in and the UI shows the "Hub discovery unavailable" notice (FR-021).
+
 1. **Setup.** Show the XRPL Testnet badge, the funded agent wallet balance, the four routing modes, and the maximum-cost control.
 2. **Prompt.** Mode Balanced, max cost `0.020000 RLUSD`:
    > Explain this distributed database query plan and identify the most expensive operation. Keep the answer under 500 words.
@@ -193,12 +199,15 @@ No platform commission is executed or displayed anywhere in the MVP (DEC-007, IN
 
 Two parts, both required by the challenge:
 
-- The XRPL feedback Stop hook (`ripple/hook/`) is registered in `.claude/settings.json` and has been running for the whole build. It submits concrete XRPL and tooling friction as it is observed. Manual submit: `node ripple/hook/submit.mjs --text "<one specific paragraph>"`.
+- The XRPL feedback Stop hook (`ripple/hook/`) is registered in `.claude/settings.json` and stayed on for the whole build, from scaffolding through the live Testnet runs. Every sampled turn that surfaced concrete XRPL or tooling friction (xrpl.js, x402-xrpl, the facilitator, RLUSD faucets) was submitted through it; the hackathon server keeps the count. Manual submit: `node ripple/hook/submit.mjs --text "<one specific paragraph>"`.
 - Final feedback form, submitted near the end of the hackathon: https://forms.gle/FZckiEAMU8oWXVbX7
+
+Definition-of-done checklist with per-bullet evidence pointers: [docs/DOD.md](docs/DOD.md). CI history: [Actions](https://github.com/Reallyeasy1/Kevin/actions/workflows/ci.yml).
 
 ## Further reading
 
 - [PRD_SPECS.md](PRD_SPECS.md), the source of truth; every P0 behaviour has a requirement ID.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), adapter boundaries, state machines, invariants, what is mocked vs live.
 - [docs/EVIDENCE.md](docs/EVIDENCE.md), transaction hashes, explorer links, screenshots.
+- [docs/DEMO.md](docs/DEMO.md), presenter rehearsal checklist; [docs/DOD.md](docs/DOD.md), PRD §21 checklist with evidence; [docs/LIVE_SMOKE.md](docs/LIVE_SMOKE.md), the manual Testnet smoke test.
 - [ripple/README.md](ripple/README.md) and [ripple/resources.md](ripple/resources.md), the challenge brief and tool list.

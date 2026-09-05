@@ -18,6 +18,8 @@ export default defineConfig({
     timeout: 120_000,
     // The API is mocked by page.route(); this only fixes the origin the page will call.
     env: {
+      // Own distDir so the e2e server never trips over the .next/dev lock of a manually started dev server.
+      NEXT_DIST_DIR: process.env.NEXT_DIST_DIR ?? '.next-e2e',
       NEXT_PUBLIC_API_BASE_URL: 'http://localhost:4010',
       NEXT_PUBLIC_DEMO_API_KEY: 'e2e-demo-key',
     },

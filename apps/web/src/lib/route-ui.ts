@@ -133,9 +133,32 @@ export interface FailureCopy {
   retrySafe: boolean;
 }
 
+/** Error codes with dedicated copy beyond the route state (§13.4, SEC-011, §14 "quote above budget"). */
+export type FailureCode = 'SPEND_CAP_REACHED' | 'QUOTE_OVER_BUDGET';
+
 /** §13.4: state what failed, whether money moved, and whether a retry can create another payment. */
-export function failureCopy(state: RouteState, apiMessage?: string | null): FailureCopy {
+export function failureCopy(
+  state: RouteState,
+  apiMessage?: string | null,
+  code?: FailureCode | null,
+): FailureCopy {
   const detail = apiMessage ? ` ${apiMessage}` : '';
+  if (code === 'SPEND_CAP_REACHED') {
+    return {
+      title: 'Hourly spend cap reached',
+      body: `This wallet has spent its configured hourly cap, so the quote was refused before signing.${detail} No money moved. Wait for the rolling hour to pass, or lower the max cost so the quote fits the remaining cap, then route again.`,
+      moneyMoved: false,
+      retrySafe: true,
+    };
+  }
+  if (code === 'QUOTE_OVER_BUDGET') {
+    return {
+      title: 'Quote exceeded your max cost',
+      body: `Every seller that quoted asked for more than your max cost, so nothing was accepted.${detail} No money moved. Raise the max cost or pick a cheaper mode and route again.`,
+      moneyMoved: false,
+      retrySafe: true,
+    };
+  }
   switch (state) {
     case 'NO_ELIGIBLE_OFFER':
       return {
@@ -294,6 +317,24 @@ export function deriveEvidence(
     sellerName: selected?.sellerName ?? null,
     ledgerIndex: typeof payload.ledgerIndex === 'number' ? payload.ledgerIndex : null,
   };
+}
+
+/** FR-010: the API may expose which classifier produced the task profile; absent means unknown, show nothing. */
+export function classifierLabel(source: unknown): string | null {
+  if (source === 'llm') return 'classified by LLM';
+  if (source === 'fallback') return 'fallback heuristic';
+  return null;
+}
+
+/** Reads `classifierSource` from wherever the API puts it (top level or inside taskProfile); guards for absence. */
+export function classifierSourceOf(...objs: (object | null | undefined)[]): unknown {
+  for (const o of objs) {
+    if (!o) continue;
+    const r = o as { classifierSource?: unknown; taskProfile?: { classifierSource?: unknown } };
+    const s = r.classifierSource ?? r.taskProfile?.classifierSource;
+    if (s !== undefined) return s;
+  }
+  return undefined;
 }
 
 export function shortHash(hash: string): string {

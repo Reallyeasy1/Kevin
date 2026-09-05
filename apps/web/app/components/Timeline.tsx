@@ -6,6 +6,7 @@ import {
   networkLabel,
   shortHash,
   type EvidenceView,
+  type FailureCode,
   type SelectedView,
   type Step,
   type StepStatus,
@@ -35,6 +36,7 @@ function statusText(
   selected: SelectedView | null,
   evidence: EvidenceView | null,
   elapsedMs: number,
+  failureCode: FailureCode | null,
 ): string {
   const seller = selected?.sellerName ?? 'the selected seller';
   switch (ui) {
@@ -65,7 +67,7 @@ function statusText(
     case 'succeeded':
       return 'Done. Answer and receipt below.';
     case 'failed_before_payment':
-      return failureCopy(routeState ?? 'FAILED').title;
+      return failureCopy(routeState ?? 'FAILED', null, failureCode).title;
     case 'paid_execution_failed':
       return failureCopy('PAID_EXECUTION_FAILED').title;
   }
@@ -79,6 +81,7 @@ export function Timeline({
   selected,
   evidence,
   elapsedMs,
+  failureCode = null,
 }: {
   ui: UiState;
   routeState: RouteState | null;
@@ -87,6 +90,7 @@ export function Timeline({
   selected: SelectedView | null;
   evidence: EvidenceView | null;
   elapsedMs: number;
+  failureCode?: FailureCode | null;
 }) {
   return (
     <section
@@ -113,7 +117,7 @@ export function Timeline({
         data-ui-state={ui}
         className="mt-3 text-sm text-neutral-800"
       >
-        {statusText(ui, routeState, route, selected, evidence, elapsedMs)}
+        {statusText(ui, routeState, route, selected, evidence, elapsedMs, failureCode)}
       </p>
     </section>
   );

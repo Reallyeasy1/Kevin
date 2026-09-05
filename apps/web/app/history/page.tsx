@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { api, type RouteListItem } from '../../src/lib/api';
-import { shortHash } from '../../src/lib/route-ui';
+import { failureCopy, shortHash } from '../../src/lib/route-ui';
 
 const PAGE = 20;
 
@@ -69,12 +69,13 @@ export default function HistoryPage() {
           {rows.map((r) => (
             <li
               key={r.routeId}
-              className="flex flex-col gap-1 p-3 text-sm sm:flex-row sm:items-center sm:gap-x-4"
+              className="flex flex-col gap-1 p-3 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4"
             >
               <span
                 className={`w-fit rounded-full px-2 py-0.5 text-xs font-medium ${STATE_TONE[r.state] ?? 'bg-neutral-100 text-neutral-700'}`}
                 data-testid="history-state"
               >
+                {r.state === 'PAID_EXECUTION_FAILED' ? '⚠ ' : ''}
                 {r.state}
               </span>
               <Link
@@ -83,6 +84,11 @@ export default function HistoryPage() {
               >
                 {r.sellerName ?? r.routeId}
               </Link>
+              {(r.taskType || r.mode) && (
+                <span className="text-xs text-neutral-500" data-testid="history-task">
+                  {[r.taskType, r.mode ? `${r.mode} mode` : null].filter(Boolean).join(' · ')}
+                </span>
+              )}
               <span className="font-mono text-xs text-neutral-700">
                 {r.quotedCost ? `${r.quotedCost} quoted` : 'not quoted'}
                 {' · '}
@@ -111,6 +117,16 @@ export default function HistoryPage() {
                 <time dateTime={r.createdAt} className="text-xs text-neutral-500 sm:ml-auto">
                   {new Date(r.createdAt).toLocaleString()}
                 </time>
+              )}
+              {r.state === 'PAID_EXECUTION_FAILED' && (
+                // FR-081 / §13.4: payment succeeded, delivery did not; say so wherever the route is listed.
+                <p
+                  role="note"
+                  className="w-full text-xs text-amber-900 sm:basis-full"
+                  data-testid="history-warning"
+                >
+                  {failureCopy('PAID_EXECUTION_FAILED').body}
+                </p>
               )}
             </li>
           ))}
