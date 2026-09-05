@@ -1,0 +1,14 @@
+packages:
+  - apps/*
+  - packages/*
+allowBuilds:
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+minimumReleaseAgeExclude:
+  - '@playwright/test@1.63.0'
+  - autoprefixer@10.5.5
+  - browserslist@4.28.9
+  - fastify@5.12.3
+  - playwright-core@1.63.0
+  - playwright@1.63.0
