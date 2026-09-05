@@ -323,7 +323,7 @@ export function ReceiptDetails({
 }
 
 /** Markdown element styling for the purchased answer (models reply in markdown). react-markdown escapes raw HTML. */
-const MD: React.ComponentProps<typeof ReactMarkdown>['components'] = {
+export const MD: React.ComponentProps<typeof ReactMarkdown>['components'] = {
   h1: (p) => <h3 className="mt-4 text-base font-semibold" {...p} />,
   h2: (p) => <h3 className="mt-4 text-base font-semibold" {...p} />,
   h3: (p) => <h4 className="mt-3 text-sm font-semibold" {...p} />,
