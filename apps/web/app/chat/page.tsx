@@ -66,6 +66,18 @@ export default function ChatPage() {
     setOpenId(id ?? cs[0]?.id ?? null);
     setSettings(loadSettings());
     setHydrated(true);
+    // A reload mid-flight (e.g. dev-server refresh) must not freeze a bubble at "Paid request sent…":
+    // resume following every in-flight route; the server state is the truth.
+    for (const c of cs)
+      c.messages.forEach((m, i) => {
+        if (m.role === 'assistant' && m.routeId && m.state && !isTerminal(m.state))
+          void followRoute(c.id, i, m.routeId).catch(() =>
+            patchMessage(c.id, i, {
+              text: 'Could not reach the API to finish this reply. Open details to see the route.',
+              state: 'FAILED',
+            }),
+          );
+      });
   }, []);
   useEffect(() => {
     if (hydrated) saveChat(conversations, openId);
@@ -93,6 +105,26 @@ export default function ChatPage() {
           : { ...c, messages: c.messages.map((m, i) => (i === index ? { ...m, ...patch } : m)) },
       ),
     );
+  }
+
+  /** Poll GET /v1/routes/:id until terminal, then fill the bubble. Used by send() and by resume-on-load. */
+  async function followRoute(convId: string, index: number, routeId: string) {
+    let detail: RouteDetail | null = null;
+    for (let attempt = 0; ; attempt++) {
+      detail = await api.getRoute(routeId);
+      patchMessage(convId, index, { state: detail.state });
+      if (isTerminal(detail.state)) break;
+      await new Promise((r) => setTimeout(r, backoffMs(attempt)));
+    }
+    const ok = detail.state === 'SUCCEEDED' && detail.result;
+    patchMessage(convId, index, {
+      text: ok ? detail.result! : failureCopy(detail.state).body,
+      state: detail.state,
+      cost: detail.payment.status === 'SETTLED' ? (detail.payment.amount ?? undefined) : undefined,
+      asset: detail.payment.assetCode ?? undefined,
+      seller: detail.selected?.sellerName ?? undefined,
+      txHash: detail.payment.transactionHash ?? undefined,
+    });
   }
 
   async function send() {
@@ -136,23 +168,7 @@ export default function ChatPage() {
         // Execute: sign once, pay, verify. Errors (e.g. POLICY_REJECTED 403) are terminal states we read back below.
         await api.execute(route.routeId, prompt).catch(() => undefined);
       }
-      let detail: RouteDetail | null = null;
-      for (let attempt = 0; ; attempt++) {
-        detail = await api.getRoute(route.routeId);
-        patchMessage(convId, assistantIndex, { state: detail.state });
-        if (isTerminal(detail.state)) break;
-        await new Promise((r) => setTimeout(r, backoffMs(attempt)));
-      }
-      const ok = detail.state === 'SUCCEEDED' && detail.result;
-      patchMessage(convId, assistantIndex, {
-        text: ok ? detail.result! : failureCopy(detail.state).body,
-        state: detail.state,
-        cost:
-          detail.payment.status === 'SETTLED' ? (detail.payment.amount ?? undefined) : undefined,
-        asset: detail.payment.assetCode ?? undefined,
-        seller: detail.selected?.sellerName ?? undefined,
-        txHash: detail.payment.transactionHash ?? undefined,
-      });
+      await followRoute(convId, assistantIndex, route.routeId);
     } catch (err) {
       patchMessage(convId, assistantIndex, {
         text: `Request failed before any payment: ${err instanceof Error ? err.message : String(err)}. No money moved.`,
