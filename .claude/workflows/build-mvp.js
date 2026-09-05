@@ -69,7 +69,7 @@ Deliver:
 Issues this addresses:
 ${issueList('infra', 'contracts')}`, { label: 'scaffold', phase: 'Scaffold', schema: REPORT_SCHEMA })
 log(`scaffold: ${scaffold?.summary ?? 'FAILED'}`)
-if (!scaffold || scaffold.unfinished.some(u => /install|typecheck|push/i.test(u))) {
+if (!scaffold || !scaffold.testsPassing || scaffold.unfinished.some(u => /push/i.test(u))) { // ponytail: testsPassing covers install+typecheck; only a failed push is not in that flag
   log('scaffold did not complete cleanly; stopping before parallel work')
   return { stoppedAt: 'scaffold', scaffold }
 }
