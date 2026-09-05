@@ -1,15 +1,17 @@
 {
-  "routeId": "9933e217-1226-4266-a1eb-3c879a73ca80",
+  "routeId": "19b212e6-f5e2-4c3e-a5c8-0f3190ea1c66",
   "promptHash": "23d46c46ecc5e2c49938f9aeb05e2d3cb0f668f06c21bcb22ad62f76c534b21c",
   "taskProfile": {
     "taskType": "coding",
     "reasoningLevel": "medium",
     "inputModality": "text",
-    "estimatedInputTokens": 25,
+    "estimatedInputTokens": 20,
     "requiredContextTokens": 4096,
     "toolCallingRequired": false,
-    "confidence": 0.5
+    "confidence": 0.95
   },
+  "classifierSource": "llm",
+  "classifierModel": "deepseek-chat",
   "mode": "balanced",
   "state": "SUCCEEDED",
   "candidates": [
@@ -109,27 +111,27 @@
   },
   "payment": {
     "status": "SETTLED",
-    "payerAddress": "rMdiYvvzXMhZvkTkPX9Kma7F61o6m4r5e3",
+    "payerAddress": "rn3rtH4jTE52QBWmpV94KEQ1xjcYkJeM8v",
     "destination": "r9jnMEauwP4Mh3dfAHNdSjFM4yiYGmsoUD",
     "amount": "0.006000",
     "assetCode": "RLUSD",
-    "transactionHash": "89F5643E4F083E7BFACA72CDAEC37B4924A0147B81F0CEE58193408DE9C506E6",
-    "explorerUrl": "https://testnet.xrpl.org/transactions/89F5643E4F083E7BFACA72CDAEC37B4924A0147B81F0CEE58193408DE9C506E6",
-    "ledgerIndex": 20496719,
-    "validatedAt": "2026-09-05T05:02:02.000Z",
+    "transactionHash": "3450FCC07D9CC530B8DE5D6DC14F124CE3DD6D620CA88229CF262EC0313424ED",
+    "explorerUrl": "https://testnet.xrpl.org/transactions/3450FCC07D9CC530B8DE5D6DC14F124CE3DD6D620CA88229CF262EC0313424ED",
+    "ledgerIndex": 20499378,
+    "validatedAt": "2026-09-05T07:22:41.000Z",
     "failureCode": null
   },
   "execution": {
     "status": "succeeded",
     "modelId": "demo/fast-code",
-    "latencyMs": 1,
-    "inputTokens": 25,
-    "outputTokens": 34,
+    "latencyMs": 8651,
+    "inputTokens": 28,
+    "outputTokens": 865,
     "failureCode": null
   },
-  "createdAt": "2026-09-05T05:01:52.766Z",
-  "updatedAt": "2026-09-05T05:02:04.386Z",
-  "expiresAt": "2026-09-05T05:06:52.755Z",
+  "createdAt": "2026-09-05T07:22:29.752Z",
+  "updatedAt": "2026-09-05T07:22:47.981Z",
+  "expiresAt": "2026-09-05T07:27:29.746Z",
   "selected": {
     "offerId": "fast-code-v1",
     "sellerName": "Fast Code",
@@ -140,5 +142,5 @@
     "asset": "RLUSD",
     "reason": "Selected Fast Code for a coding task in balanced mode."
   },
-  "result": "[mock demo/fast-code] Answer for prompt 23d46c46ecc5: Write a TypeScript function that parses an ISO-8601 duration string into total s"
+  "result": "Certainly! The ISO 8601 duration format typically looks something like this: `P3Y6M4DT12H30M5S`, where:\n\n- `P` indicates the period.\n- `Y` indicates years.\n- `M` indicates months.\n- `D` indicates days.\n- `T` signifies the start of the time section.\n- `H`, `M`, and `S` indicate hours, minutes, and seconds respectively.\n\nThe following TypeScript function parses an ISO 8601 duration string and converts it to total seconds. I’ll include test cases as well.\n\n```typescript\nfunction parseISODuration(isoDuration: string): number {\n    let totalSeconds = 0;\n\n    // Use regex to extract the various components of the duration\n    const regex = /(?:(\\d+)Y)?(?:(\\d+)M)?(?:(\\d+)D)?(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?/;\n    const matches = regex.exec(isoDuration);\n\n    if (!matches) {\n        throw new Error('Invalid ISO 8601 duration format');\n    }\n\n    const years = matches[1] ? parseInt(matches[1]) : 0;\n    const months = matches[2] ? parseInt(matches[2]) : 0;\n    const days = matches[3] ? parseInt(matches[3]) : 0;\n    const hours = matches[4] ? parseInt(matches[4]) : 0;\n    const minutes = matches[5] ? parseInt(matches[5]) : 0;\n    const seconds = matches[6] ? parseInt(matches[6]) : 0;\n\n    // Calculate total seconds\n    totalSeconds += years * 365 * 24 * 60 * 60; // Approximation: 1 year = 365 days\n    totalSeconds += months * 30 * 24 * 60 * 60; // Approximation: 1 month = 30 days\n    totalSeconds += days * 24 * 60 * 60;\n    totalSeconds += hours * 60 * 60;\n    totalSeconds += minutes * 60;\n    totalSeconds += seconds;\n\n    return totalSeconds;\n}\n\n// Tests\n\nfunction runTests() {\n    console.log(parseISODuration(\"P1Y2M3DT4H5M6S\")); // 1 year, 2 months, 3 days, 4 hours, 5 minutes, 6 seconds = 31578276 seconds\n    console.log(parseISODuration(\"PT1H30M\")); // 1 hour, 30 minutes = 5400 seconds\n    console.log(parseISODuration(\"P0D\")); // 0 days = 0 seconds\n    console.log(parseISODuration(\"PT10S\")); // 10 seconds = 10 seconds\n    console.log(parseISODuration(\"P2Y\")); // 2 years = 63072000 seconds\n    console.log(parseISODuration(\"P3DT5H\")); // 3 days 5 hours = 273600 seconds\n\n    try {\n        console.log(parseISODuration(\"INVALID_STRING\")); // Invalid format test\n    } catch (error) {\n        console.error(error.message); // Expected to throw an error\n    }\n}\n\nrunTests();\n```\n\n### Explanation:\n1. **Functionality**:\n   - The `parseISODuration` function uses a regular expression to match and capture the individual components (years, months, days, hours, minutes, seconds) from the input ISO 8601 duration string.\n   - It then calculates total seconds by converting each component into seconds and summing them up.\n\n2. **Tests**:\n   - Each test case calls the function with a variety of valid ISO durations and logs the result.\n   - There’s also a test case that uses an invalid string to demonstrate error handling.\n\n3. **Assumptions**:\n   - The code uses approximate values for years (365 days) and months (30 days). In actual applications where precision is crucial (considering leap years, varying month lengths, etc.), you'd want to have a more sophisticated approach."
 }

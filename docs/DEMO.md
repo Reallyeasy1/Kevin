@@ -84,7 +84,7 @@ Do not fill silence with claims the screen does not make. If Settle takes a whil
 
 **On screen:**
 
-- [ ] The model answer.
+- [ ] The model answer. Say which upstream produced it: in the recorded run the seller ran gpt-4o-mini (`SELLER_UPSTREAM_PROVIDER=openai-compatible`); with `SELLER_UPSTREAM_PROVIDER=mock` the answer is a labelled canned string, so never present a mock answer as inference.
 - [ ] XRPL payment card: "Validated", `0.006000 RLUSD` to Fast Code, short tx hash, ledger index, **View on explorer** link.
 - [ ] Wallet bar RLUSD balance is exactly 0.006000 lower than in step 1.
 

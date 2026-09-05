@@ -12,6 +12,8 @@ SubBuddy is a wallet-native AI inference router built for the Singhacks 2026 Rip
 
 A user or agent can buy the most suitable AI inference for a task without creating an account with the seller, holding prepaid credits, or supplying an API key to the seller. The buyer's per-seller credentials and balances are replaced by one wallet-backed, request-scoped purchase.
 
+In the demo, all three curated offers are served by one team-run seller process and settle to one seller wallet; that is a Testnet stand-in for the XRPL AI Hub market, and the buyer still never holds an account or API key with the seller.
+
 It does not prove that API keys vanish from the whole supply chain: a seller may still hold an upstream model credential behind its x402 gate, and the buyer holds one credential for prompt classification (DEC-014), with a deterministic fallback classifier if that fails.
 
 ## Problem
