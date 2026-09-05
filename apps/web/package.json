@@ -11,10 +11,12 @@
     "test:e2e": "playwright test --config ../../playwright.config.ts"
   },
   "dependencies": {
+    "@subbuddy/contracts": "workspace:*",
     "next": "16.3.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "@subbuddy/contracts": "workspace:*"
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.3",

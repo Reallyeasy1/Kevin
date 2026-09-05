@@ -1,5 +1,7 @@
 'use client';
 
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type {
   ExecutionReceipt,
   RouteResponse,
@@ -320,6 +322,41 @@ export function ReceiptDetails({
   );
 }
 
+/** Markdown element styling for the purchased answer (models reply in markdown). react-markdown escapes raw HTML. */
+const MD: React.ComponentProps<typeof ReactMarkdown>['components'] = {
+  h1: (p) => <h3 className="mt-4 text-base font-semibold" {...p} />,
+  h2: (p) => <h3 className="mt-4 text-base font-semibold" {...p} />,
+  h3: (p) => <h4 className="mt-3 text-sm font-semibold" {...p} />,
+  p: (p) => <p className="mt-2 break-words" {...p} />,
+  ul: (p) => <ul className="mt-2 list-disc space-y-1 pl-5" {...p} />,
+  ol: (p) => <ol className="mt-2 list-decimal space-y-1 pl-5" {...p} />,
+  a: (p) => <a className="underline" target="_blank" rel="noreferrer" {...p} />,
+  pre: (p) => (
+    <pre
+      className="mt-2 overflow-x-auto rounded bg-neutral-900 p-3 font-mono text-xs text-neutral-100"
+      {...p}
+    />
+  ),
+  code: ({ className, children, ...rest }) =>
+    className ? (
+      <code className={className} {...rest}>
+        {children}
+      </code>
+    ) : (
+      <code className="rounded bg-neutral-100 px-1 font-mono text-[0.85em]" {...rest}>
+        {children}
+      </code>
+    ),
+  table: (p) => (
+    <div className="mt-2 overflow-x-auto">
+      <table className="text-xs" {...p} />
+    </div>
+  ),
+  th: (p) => <th className="border-b px-2 py-1 text-left font-semibold" {...p} />,
+  td: (p) => <td className="border-b px-2 py-1" {...p} />,
+  blockquote: (p) => <blockquote className="mt-2 border-l-2 pl-3 text-neutral-600" {...p} />,
+};
+
 export function Answer({
   content,
   ui,
@@ -342,7 +379,11 @@ export function Answer({
       <h2 className="text-sm font-semibold">Answer</h2>
       {content ? (
         <>
-          <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-sm">{content}</pre>
+          <div className="mt-2 text-sm leading-6" data-testid="answer-markdown">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD}>
+              {content}
+            </ReactMarkdown>
+          </div>
           {usage.length > 0 && (
             <p className="mt-2 font-mono text-xs text-neutral-500" data-testid="usage">
               {usage.join(' · ')}
