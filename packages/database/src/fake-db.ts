@@ -18,10 +18,15 @@ const DECIMAL_COLS = new Set([
   'finalScore',
 ]);
 
-function table(uniques: string[][]) {
+function table(uniques: string[][], defaults: Row = {}) {
   const rows: Row[] = [];
   const normalise = (data: Row): Row => {
-    const out: Row = { id: crypto.randomUUID(), createdAt: new Date(), updatedAt: new Date() };
+    const out: Row = {
+      id: crypto.randomUUID(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...defaults,
+    };
     for (const [k, v] of Object.entries(data)) {
       out[k] =
         DECIMAL_COLS.has(k) && (typeof v === 'string' || typeof v === 'number')
@@ -33,9 +38,10 @@ function table(uniques: string[][]) {
   const matches = (row: Row, where: Row) =>
     Object.entries(where).every(([k, v]) => {
       if (v && typeof v === 'object' && !(v instanceof Date)) {
-        const cond = v as { in?: unknown[]; gte?: Date };
+        const cond = v as { in?: unknown[]; gte?: Date; not?: unknown };
         if (cond.in) return cond.in.includes(row[k]);
         if (cond.gte) return (row[k] as Date) >= cond.gte;
+        if ('not' in cond) return row[k] !== cond.not;
       }
       return row[k] === v;
     });
@@ -78,7 +84,9 @@ export function createFakeDb() {
   const route = table([]);
   const routeCandidate = table([['routeId', 'offerId']]);
   const quote = table([['routeId'], ['invoiceId']]);
-  const payment = table([['routeId'], ['quoteId'], ['invoiceId'], ['transactionHash']]);
+  const payment = table([['routeId'], ['quoteId'], ['invoiceId'], ['transactionHash']], {
+    status: 'CREATED', // schema @default(CREATED); the spend ledger counts CREATED claims (INV-012)
+  });
   const execution = table([['routeId'], ['invoiceId']]);
   const withRelations = (r: Row) => ({
     ...r,

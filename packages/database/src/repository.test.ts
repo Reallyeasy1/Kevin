@@ -124,12 +124,17 @@ describe('spend ledger (SEC-011)', () => {
   it('sums signed/sent/settled payments in the rolling hour as a decimal string', async () => {
     const { db, repo, claim } = await seed();
     const { paymentId } = await repo.claimPayment(claim);
-    await repo.updatePayment(paymentId, { status: 'SETTLED' });
     const ledger = createSpendLedger(db);
+    // INV-012: a CREATED claim counts so concurrent executes see each other's pending spend...
+    expect(await ledger.spentLastHour()).toBe('0.012345');
+    // ...but the claimant excludes its own row so its amount is not counted twice.
+    expect(await ledger.spentLastHour(new Date(), paymentId)).toBe('0');
+    expect(await ledger.wouldExceedCap('0.012345', '0.012345', new Date(), paymentId)).toBe(false);
+    await repo.updatePayment(paymentId, { status: 'SETTLED' });
     expect(await ledger.spentLastHour()).toBe('0.012345');
     expect(await ledger.wouldExceedCap('1.000000', '0.987655')).toBe(false);
     expect(await ledger.wouldExceedCap('1.000000', '0.987656')).toBe(true);
-    // CREATED (unsigned) payments and payments older than an hour do not count
+    // POLICY_REJECTED payments and payments older than an hour do not count
     await repo.updatePayment(paymentId, { status: 'POLICY_REJECTED' });
     expect(await ledger.spentLastHour()).toBe('0');
     await repo.updatePayment(paymentId, { status: 'SETTLED' });

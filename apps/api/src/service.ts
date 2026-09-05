@@ -402,7 +402,7 @@ export class RouteService {
         state: route.state,
       }),
     };
-    const decision = await this.policyGate(route, quote);
+    const decision = await this.policyGate(route, quote, claim.paymentId);
     this.policyDecisions.set(routeId, decision);
     if (!decision.approved) {
       const failed = decision.checks.filter((c) => !c.passed);
@@ -437,6 +437,7 @@ export class RouteService {
   private async policyGate(
     route: RouteReceipt,
     quote: NonNullable<RouteReceipt['quote']>,
+    paymentId: string,
   ): Promise<PolicyDecision> {
     const { config, registry, spend, balances } = this.d;
     const now = this.now().getTime();
@@ -478,7 +479,13 @@ export class RouteService {
     check('no_existing_payment', true, '');
     let overCap = true;
     try {
-      overCap = await spend.wouldExceedCap(config.hourlySpendCap, quote.amount, this.now());
+      // Our own CREATED claim is already in the ledger; exclude it so the amount is counted once.
+      overCap = await spend.wouldExceedCap(
+        config.hourlySpendCap,
+        quote.amount,
+        this.now(),
+        paymentId,
+      );
     } catch {
       /* treated as failed below */
     }
