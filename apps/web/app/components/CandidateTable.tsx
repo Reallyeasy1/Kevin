@@ -1,4 +1,32 @@
-import type { CandidateEligibility, RouteCandidateView } from '@subbuddy/contracts';
+import type { CandidateEligibility, OfferSource, RouteCandidateView } from '@subbuddy/contracts';
+
+/** FR-021: every candidate shows where it came from; hub offers link to their xrpl-ai.org listing. */
+export function SourceLabel({ source, hubUrl }: { source: OfferSource; hubUrl?: string | null }) {
+  if (source === 'xrpl-ai-hub') {
+    const label = 'xrpl-ai-hub';
+    return hubUrl ? (
+      <a
+        href={hubUrl}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="text-xs text-indigo-700 underline focus:outline-2 focus:outline-indigo-600"
+        data-testid="source"
+        data-source={source}
+      >
+        {label}
+      </a>
+    ) : (
+      <span className="text-xs text-indigo-700" data-testid="source" data-source={source}>
+        {label}
+      </span>
+    );
+  }
+  return (
+    <span className="text-xs text-neutral-500" data-testid="source" data-source={source}>
+      curated
+    </span>
+  );
+}
 
 const STATUS: Record<CandidateEligibility, { label: string; cls: string }> = {
   selected: { label: 'Selected', cls: 'bg-indigo-100 text-indigo-800' },
@@ -24,9 +52,12 @@ function Num({ v }: { v: string | null }) {
 export function CandidateTable({
   candidates,
   asset,
+  hubUrls = {},
 }: {
   candidates: RouteCandidateView[];
   asset: string;
+  /** offerId -> hub listing URL, from GET /v1/offers (FR-021). */
+  hubUrls?: Record<string, string>;
 }) {
   if (candidates.length === 0) return null;
   const rows = [...candidates].sort(
@@ -40,11 +71,13 @@ export function CandidateTable({
       className="rounded-lg border border-neutral-200 bg-white p-4"
     >
       <h2 className="mb-2 text-sm font-semibold">Candidates considered</h2>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[560px] text-sm" data-testid="candidates">
+      {/* tabIndex: a scrollable region must be focusable so keyboard users can pan it at 360px (NFR-007/008). */}
+      <div className="overflow-x-auto" tabIndex={0}>
+        <table className="w-full min-w-[620px] text-sm" data-testid="candidates">
           <thead className="text-left text-xs text-neutral-500">
             <tr>
               <th className="px-2 py-1">Offer</th>
+              <th className="px-2 py-1">Source</th>
               <th className="px-2 py-1 text-right">Task quality</th>
               <th className="px-2 py-1 text-right">Price ({asset})</th>
               <th className="px-2 py-1 text-right">Latency</th>
@@ -63,6 +96,9 @@ export function CandidateTable({
                       {c.rejectionReasons.join(', ')}
                     </span>
                   )}
+                </td>
+                <td className="px-2 py-1">
+                  <SourceLabel source={c.source} hubUrl={hubUrls[c.offerId] ?? null} />
                 </td>
                 <Num v={c.qualityScore} />
                 <td className="px-2 py-1 text-right font-mono text-xs">

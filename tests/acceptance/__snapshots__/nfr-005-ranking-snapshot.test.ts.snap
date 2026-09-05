@@ -1,0 +1,366 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`NFR-005: Deterministic candidate ranking > snapshot: candidate order and scores per prompt class and mode 1`] = `
+{
+  "chat/balanced": [
+    {
+      "eligibility": "selected",
+      "finalScore": "0.8215",
+      "offerId": "fast-text-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "not_quoted",
+      "finalScore": "0.7195",
+      "offerId": "fast-code-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "not_quoted",
+      "finalScore": "0.4910",
+      "offerId": "deep-reasoning-v1",
+      "rejectionReasons": [],
+    },
+  ],
+  "chat/cheapest": [
+    {
+      "eligibility": "selected",
+      "finalScore": "0.8533",
+      "offerId": "fast-text-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "not_quoted",
+      "finalScore": "0.6695",
+      "offerId": "fast-code-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "not_quoted",
+      "finalScore": "0.2270",
+      "offerId": "deep-reasoning-v1",
+      "rejectionReasons": [],
+    },
+  ],
+  "chat/fastest": [
+    {
+      "eligibility": "selected",
+      "finalScore": "0.7950",
+      "offerId": "fast-text-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "not_quoted",
+      "finalScore": "0.7195",
+      "offerId": "fast-code-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "not_quoted",
+      "finalScore": "0.2270",
+      "offerId": "deep-reasoning-v1",
+      "rejectionReasons": [],
+    },
+  ],
+  "chat/quality": [
+    {
+      "eligibility": "selected",
+      "finalScore": "0.8057",
+      "offerId": "fast-text-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "not_quoted",
+      "finalScore": "0.7520",
+      "offerId": "fast-code-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "not_quoted",
+      "finalScore": "0.7110",
+      "offerId": "deep-reasoning-v1",
+      "rejectionReasons": [],
+    },
+  ],
+  "coding/balanced": [
+    {
+      "eligibility": "selected",
+      "finalScore": "0.7780",
+      "offerId": "fast-code-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "not_quoted",
+      "finalScore": "0.5090",
+      "offerId": "deep-reasoning-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "fast-text-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+  ],
+  "coding/cheapest": [
+    {
+      "eligibility": "selected",
+      "finalScore": "0.6890",
+      "offerId": "fast-code-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "not_quoted",
+      "finalScore": "0.2330",
+      "offerId": "deep-reasoning-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "fast-text-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+  ],
+  "coding/fastest": [
+    {
+      "eligibility": "selected",
+      "finalScore": "0.7390",
+      "offerId": "fast-code-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "not_quoted",
+      "finalScore": "0.2330",
+      "offerId": "deep-reasoning-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "fast-text-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+  ],
+  "coding/quality": [
+    {
+      "eligibility": "selected",
+      "finalScore": "0.8430",
+      "offerId": "fast-code-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "not_quoted",
+      "finalScore": "0.7390",
+      "offerId": "deep-reasoning-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "fast-text-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+  ],
+  "math/balanced": [
+    {
+      "eligibility": "selected",
+      "finalScore": "0.9680",
+      "offerId": "deep-reasoning-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "fast-code-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "fast-text-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+  ],
+  "math/cheapest": [
+    {
+      "eligibility": "selected",
+      "finalScore": "0.9860",
+      "offerId": "deep-reasoning-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "fast-code-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "fast-text-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+  ],
+  "math/fastest": [
+    {
+      "eligibility": "selected",
+      "finalScore": "0.9860",
+      "offerId": "deep-reasoning-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "fast-code-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "fast-text-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+  ],
+  "math/quality": [
+    {
+      "eligibility": "selected",
+      "finalScore": "0.9530",
+      "offerId": "deep-reasoning-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "fast-code-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "fast-text-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+  ],
+  "summary/balanced": [
+    {
+      "eligibility": "selected",
+      "finalScore": "0.9350",
+      "offerId": "fast-text-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "deep-reasoning-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "fast-code-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+  ],
+  "summary/cheapest": [
+    {
+      "eligibility": "selected",
+      "finalScore": "0.9770",
+      "offerId": "fast-text-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "deep-reasoning-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "fast-code-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+  ],
+  "summary/fastest": [
+    {
+      "eligibility": "selected",
+      "finalScore": "0.9770",
+      "offerId": "fast-text-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "deep-reasoning-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "fast-code-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+  ],
+  "summary/quality": [
+    {
+      "eligibility": "selected",
+      "finalScore": "0.9000",
+      "offerId": "fast-text-v1",
+      "rejectionReasons": [],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "deep-reasoning-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+    {
+      "eligibility": "ineligible",
+      "finalScore": null,
+      "offerId": "fast-code-v1",
+      "rejectionReasons": [
+        "CAPABILITY_MISSING",
+      ],
+    },
+  ],
+}
+`;

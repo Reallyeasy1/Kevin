@@ -1,0 +1,94 @@
+{
+  "$comment": "FR-021 build-time import of XRPL AI Hub listings (https://xrpl-ai.org/), captured 2026-09-05. Raw hub data: normalised and validated by XrplAiHubRegistry before any field reaches the allowlist (SEC-003). Unknown fields are null and cause the record to be skipped with a logged reason. Every listing observed on the hub was Mainnet (xrpl:0), so under APP_ENV=hackathon all records are excluded and the UI shows the hub-unavailable notice.",
+  "capturedAt": "2026-09-05",
+  "listings": [
+    {
+      "hubServiceId": "greenhead/ai-chat",
+      "hubUrl": "https://xrpl-ai.org/",
+      "displayName": "Greenhead AI Chat",
+      "endpoint": "https://x402.greenhead.io/v1/ai/chat",
+      "payTo": "rnPmtGgU7fMKrud7m1oK7E1ogN35qDbKV1",
+      "network": "xrpl:0",
+      "asset": "XRP",
+      "price": "0.05",
+      "capabilities": ["general_chat"]
+    },
+    {
+      "hubServiceId": "greenhead/grok",
+      "hubUrl": "https://xrpl-ai.org/",
+      "displayName": "Greenhead Grok",
+      "endpoint": "https://x402.greenhead.io/v1/ai/grok",
+      "payTo": "rnPmtGgU7fMKrud7m1oK7E1ogN35qDbKV1",
+      "network": "xrpl:0",
+      "asset": "XRP",
+      "price": "0.05",
+      "capabilities": ["general_chat", "long_context_analysis"]
+    },
+    {
+      "hubServiceId": "greenhead/sentiment",
+      "hubUrl": "https://xrpl-ai.org/",
+      "displayName": "Greenhead Sentiment",
+      "endpoint": "https://x402.greenhead.io/v1/ai/sentiment",
+      "payTo": "rnPmtGgU7fMKrud7m1oK7E1ogN35qDbKV1",
+      "network": "xrpl:0",
+      "asset": "XRP",
+      "price": "0.05",
+      "capabilities": ["extraction"]
+    },
+    {
+      "hubServiceId": "greenhead/market-summary",
+      "hubUrl": "https://xrpl-ai.org/",
+      "displayName": "Greenhead Market Summary",
+      "endpoint": "https://x402.greenhead.io/v1/grok/market-summary",
+      "payTo": "rnPmtGgU7fMKrud7m1oK7E1ogN35qDbKV1",
+      "network": "xrpl:0",
+      "asset": "XRP",
+      "price": "0.003",
+      "capabilities": ["summarization"]
+    },
+    {
+      "hubServiceId": "agentic-swarm-marketplace/constitution-safe-llm-answer",
+      "hubUrl": "https://xrpl-ai.org/",
+      "displayName": "Constitution-safe LLM answer",
+      "endpoint": null,
+      "payTo": "rHyLmYewCQABAx6MMRBBuYYUUYWve2E1Lf",
+      "network": "xrpl:0",
+      "asset": "XRP",
+      "price": "0.0048",
+      "capabilities": ["general_chat"]
+    },
+    {
+      "hubServiceId": "agentic-swarm-marketplace/multi-section-research-brief",
+      "hubUrl": "https://xrpl-ai.org/",
+      "displayName": "Multi-section research brief",
+      "endpoint": null,
+      "payTo": "rHyLmYewCQABAx6MMRBBuYYUUYWve2E1Lf",
+      "network": "xrpl:0",
+      "asset": "XRP",
+      "price": "0.024",
+      "capabilities": ["summarization", "long_context_analysis"]
+    },
+    {
+      "hubServiceId": "clawbank/horror-story-api",
+      "hubUrl": "https://xrpl-ai.org/",
+      "displayName": "Horror Story API",
+      "endpoint": null,
+      "payTo": "rJBKtRaoQTepBEx3xjXWe71m32h3jY7fwB",
+      "network": "xrpl:0",
+      "asset": "RLUSD",
+      "price": "0.00143",
+      "capabilities": ["creative_writing"]
+    },
+    {
+      "hubServiceId": "sciphr/xrpl-credential-verify",
+      "hubUrl": "https://xrpl-ai.org/",
+      "displayName": "XRPL Credential Verify",
+      "endpoint": null,
+      "payTo": "rUjBK34fKyMstVePdZwhfJhoQuz4U6wLDL",
+      "network": "xrpl:0",
+      "asset": "XRP",
+      "price": "0.002",
+      "capabilities": null
+    }
+  ]
+}

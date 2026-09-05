@@ -1,7 +1,7 @@
 /** Buyer API entrypoint. Config validation runs first and fails fast (NFR-009, SEC-010). */
 import {
-  CuratedRegistry,
   buildCuratedOffers,
+  buildMergedRegistry,
   loadBuyerEnv,
   settlementAsset,
 } from '@subbuddy/config';
@@ -11,11 +11,13 @@ import { createClassifier } from '@subbuddy/routing';
 import { buildApp } from './app.js';
 import { createBalanceReader } from './balances.js';
 import { RouteEvents } from './events.js';
+import { guardedFetch } from './http.js';
 import { Metrics } from './metrics.js';
 
 const env = loadBuyerEnv();
 const asset = settlementAsset(env);
-const registry = new CuratedRegistry(buildCuratedOffers(env));
+// FR-021: curated ∪ xrpl-ai.org hub listings; hubStatus surfaces on GET /v1/offers for the UI notice.
+const registry = buildMergedRegistry(env, buildCuratedOffers(env));
 const db = createDb(env.DATABASE_URL);
 const ledger = createLedgerClient(env.XRPL_WSS_URL);
 
@@ -27,9 +29,12 @@ const signer = new XrplWalletSigner({
 // Read once at startup; the service and /v1/wallet use the cached address so no request touches the seed.
 const walletAddress = await signer.getAddress();
 
+// SEC-004: deadlines and body caps on every outbound call. The payment client adds its own per-call
+// timeouts (30s quote / 120s paid); the wrapper is the outer bound and the streaming size cap.
 const payments = new X402PaymentClient({
   ledger,
   registry,
+  fetchImpl: guardedFetch({ timeoutMs: 120_000, maxResponseBytes: 1024 * 1024 }),
   expected: {
     network: env.XRPL_NETWORK,
     // Only consulted for issued-currency quotes; XRP settlement never reads these (validateQuote).
@@ -55,12 +60,15 @@ const app = await buildApp({
     repo: createRepository(db),
     spend: createSpendLedger(db),
     registry,
-    classifier: createClassifier({
-      provider: env.CLASSIFIER_PROVIDER,
-      apiKey: env.CLASSIFIER_API_KEY,
-      model: env.CLASSIFIER_MODEL,
-      baseUrl: env.CLASSIFIER_BASE_URL,
-    }),
+    classifier: createClassifier(
+      {
+        provider: env.CLASSIFIER_PROVIDER,
+        apiKey: env.CLASSIFIER_API_KEY,
+        model: env.CLASSIFIER_MODEL,
+        baseUrl: env.CLASSIFIER_BASE_URL,
+      },
+      guardedFetch({ timeoutMs: 8_000, maxResponseBytes: 64 * 1024 }),
+    ),
     payments,
     signer,
     balances,

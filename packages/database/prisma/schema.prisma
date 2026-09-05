@@ -110,6 +110,8 @@ model Quote {
   assetIssuer        String?
   network            String
   rawRequirementHash String
+  // The exact accepts[] entry (JSON) so the requirement is rebuilt byte-identical after a restart (INV-005).
+  requirementJson    String?
   expiresAt          DateTime
   createdAt          DateTime @default(now())
 

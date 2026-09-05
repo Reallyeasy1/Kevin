@@ -58,7 +58,38 @@ function table(uniques: string[][], defaults: Row = {}) {
     rows,
     create: async ({ data }: { data: Row }) => insert(data),
     createMany: async ({ data }: { data: Row[] }) => ({ count: data.map(insert).length }),
-    findMany: async ({ where = {} }: { where?: Row }) => rows.filter((r) => matches(r, where)),
+    findMany: async ({
+      where = {},
+      orderBy,
+      cursor,
+      skip = 0,
+      take,
+    }: {
+      where?: Row;
+      orderBy?: Row | Row[];
+      cursor?: Row;
+      skip?: number;
+      take?: number;
+    }) => {
+      let out = rows.filter((r) => matches(r, where));
+      for (const ord of [
+        ...(Array.isArray(orderBy) ? orderBy : orderBy ? [orderBy] : []),
+      ].reverse()) {
+        const [k, dir] = Object.entries(ord)[0] as [string, string];
+        out = [...out].sort((x, y) => {
+          const a = x[k] as string | Date;
+          const b = y[k] as string | Date;
+          const c = a < b ? -1 : a > b ? 1 : 0;
+          return dir === 'desc' ? -c : c;
+        });
+      }
+      if (cursor) {
+        const i = out.findIndex((r) => matches(r, cursor));
+        out = i < 0 ? [] : out.slice(i);
+      }
+      out = out.slice(skip);
+      return take === undefined ? out : out.slice(0, take);
+    },
     findUnique: async ({ where }: { where: Row }) => rows.find((r) => matches(r, where)) ?? null,
     findUniqueOrThrow: async ({ where }: { where: Row }) => {
       const r = rows.find((row) => matches(row, where));
@@ -102,6 +133,8 @@ export function createFakeDb() {
         const r = await route.findUnique({ where });
         return r && withRelations(r);
       },
+      findMany: async (args: Parameters<typeof route.findMany>[0] & { include?: Row }) =>
+        (await route.findMany(args)).map((r) => (args.include ? withRelations(r) : r)),
     },
     routeCandidate,
     quote,

@@ -31,7 +31,7 @@ External SDK types stay inside their package. Routing, API, and UI code see only
 | Interface | Implementations | Where SDKs are allowed |
 | --- | --- | --- |
 | `Classifier` | `LlmClassifier` (Anthropic or OpenAI-compatible over `fetch`), `FallbackClassifier` (deterministic) | `packages/routing/src/classifier.ts` |
-| `ProviderRegistry` | `CuratedRegistry` (MVP). `XrplAiHubRegistry` is the P1 slot for xrpl-ai.org listings. | `packages/config/src/registry.ts` |
+| `ProviderRegistry` | `CuratedRegistry` (MVP); `XrplAiHubRegistry` imports `packages/config/hub-offers.json` (xrpl-ai.org listings, FR-021); `MergedRegistry` = curated ∪ hub deduped by endpoint. | `packages/config/src/registry.ts`, `packages/config/src/hub.ts` |
 | `PaymentClient` | `X402PaymentClient`: `obtainRequirement`, `payAndRetry`, `resolveTransaction` | `packages/payments` (xrpl.js, x402-xrpl) |
 | `WalletSigner` | `XrplWalletSigner`: `getAddress`, `signExactPayment` | `packages/payments/src/signer.ts` |
 
@@ -44,7 +44,7 @@ Other seams:
 ## Request lifecycle
 
 1. `POST /v1/routes` (bearer `DEMO_API_KEY`): validate mandate, classify, load registry, filter, score, persist route and candidates. No network to sellers yet.
-2. `POST /v1/routes/:id/execute`: prompt hash must match. Lock the route row (SEC-007). Send the unpaid request to the top candidate, expect 402, store the immutable quote. Try the next eligible candidate on rejection or over-budget quote, bounded by the candidate count.
+2. `POST /v1/routes/:id/execute`: prompt hash must match. Lock the route row (SEC-007). Send the unpaid request to the top candidate, expect 402, store the immutable quote. Try the next eligible candidate on rejection or over-budget quote, bounded to `MAX_QUOTE_ATTEMPTS = 3` attempts (§14); on exhaustion the route fails with the last quote failure's code (AT-004).
 3. Policy gate: mandate active, balance sufficient, network/asset match, destination allowlisted, amount within mandate, no existing payment, hourly spend cap not exhausted, expiry leaves time to submit. A rejection never touches the signer.
 4. Sign once (serialised per wallet), persist blob and hash, then resend with `PAYMENT-SIGNATURE`.
 5. Seller: facilitator `verify`, then `settle`, then upstream model once per invoice, then respond with `PAYMENT-RESPONSE`.
@@ -127,6 +127,7 @@ Transitions are encoded in `packages/contracts/src/state-machine.ts` and tested 
 | Upstream model | `mockUpstream()` | not reached | `mockUpstream()` unless configured | real if `SELLER_UPSTREAM_PROVIDER=openai-compatible` |
 | Classifier | `FallbackClassifier` or stubbed `fetch` | not reached | `mock` (deterministic) | `anthropic` or `openai-compatible` if configured |
 | Database | `createFakeDb()` in-memory | not reached | Postgres via Docker | Postgres |
+| Offer registry (FR-021) | curated seed + `hub-offers.json` build-time import; Mainnet hub listings excluded under `APP_ENV=hackathon`, so curated-only with `hubStatus.available=false` | mocked `/v1/offers` | same as tests | same as tests |
 
 Rule: live Testnet tests are manual and never run on ordinary CI commits (PRD §18.3). Evidence from them is recorded by hand in [EVIDENCE.md](EVIDENCE.md).
 

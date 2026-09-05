@@ -46,6 +46,25 @@ export interface OpenAiCompatibleOptions {
 
 const MAX_UPSTREAM_BYTES = 1024 * 1024; // SEC-004
 
+// ponytail: same as @subbuddy/payments readBodyCapped; copied because the seller must not depend on the buyer side.
+async function readCapped(res: Response, max: number): Promise<string> {
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel();
+      throw new Error('upstream response too large');
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 /** Any `/chat/completions` server. Errors carry a status code only, never the upstream body (SEC-008). */
 export function openAiCompatibleUpstream(o: OpenAiCompatibleOptions): UpstreamModel {
   const fetchImpl = o.fetchImpl ?? fetch;
@@ -62,9 +81,7 @@ export function openAiCompatibleUpstream(o: OpenAiCompatibleOptions): UpstreamMo
         }),
         signal: AbortSignal.timeout(o.timeoutMs ?? 60_000),
       });
-      const text = await res.text();
-      if (Buffer.byteLength(text) > MAX_UPSTREAM_BYTES)
-        throw new Error('upstream response too large');
+      const text = await readCapped(res, MAX_UPSTREAM_BYTES);
       if (!res.ok) throw new Error(`upstream http ${res.status}`);
       const json = JSON.parse(text) as {
         choices?: { message?: { content?: unknown } }[];

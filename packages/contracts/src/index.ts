@@ -277,6 +277,8 @@ export const PaymentRequirement = z.object({
   expiresAt: IsoTimestamp,
   /** SHA-256 over the canonical raw requirement (§12.3 rawRequirementHash). */
   requirementHash: Sha256Hex,
+  /** The exact `accepts[]` entry as received, JSON-encoded, so the requirement can be rebuilt byte-identical after restart (INV-005). */
+  rawRequirementJson: z.string().optional(),
 });
 export type PaymentRequirement = z.infer<typeof PaymentRequirement>;
 
@@ -348,6 +350,11 @@ export type SettlementResult =
       transactionHash: string;
       /** Latest validated ledger; compare with the persisted LastLedgerSequence to decide failed vs pending. */
       currentLedgerIndex: number;
+    }
+  | {
+      /** The node could not search the whole ledger range (no history). Never a failure; poll again (INV-009). */
+      status: 'unknown';
+      transactionHash: string;
     };
 
 // ---------------------------------------------------------------------------
@@ -367,7 +374,13 @@ export interface ProviderRegistry {
 export interface PaymentClient {
   obtainRequirement(request: SellerRequest): Promise<PaymentRequirement>;
   payAndRetry(input: PayAndRetryInput): Promise<PaidSellerResponse>;
-  resolveTransaction(hash: string): Promise<SettlementResult>;
+  /** `range` = first ledger the payment could appear in .. LastLedgerSequence; lets the node say "not searched" vs "not found". */
+  resolveTransaction(hash: string, range?: LedgerRange): Promise<SettlementResult>;
+}
+
+export interface LedgerRange {
+  minLedger: number;
+  maxLedger: number;
 }
 
 export interface WalletSigner {
@@ -512,6 +525,14 @@ export type RouteResponse = z.infer<typeof RouteResponse>;
 export const ExecuteRequest = z.object({ prompt: z.string().min(1) });
 export type ExecuteRequest = z.infer<typeof ExecuteRequest>;
 
+/** GET /v1/routes/:id (§11.4): the receipt plus the fields the UI needs that FR-090 leaves implicit. */
+export const RouteView = Receipt.extend({
+  selected: SelectedOffer.nullable(),
+  result: z.string().nullable(),
+  expiresAt: IsoTimestamp,
+});
+export type RouteView = z.infer<typeof RouteView>;
+
 export const ExecuteResponse = z.object({
   routeId: z.string().min(1),
   state: RouteState,
@@ -557,4 +578,15 @@ export const WalletResponse = z.object({
 });
 export type WalletResponse = z.infer<typeof WalletResponse>;
 
-export * from './state-machine.js';
+// Named exports: `export *` from this module breaks Turbopack in apps/web.
+export {
+  IllegalTransitionError,
+  PAYMENT_TRANSITIONS,
+  ROUTE_TRANSITIONS,
+  assertPaymentTransition,
+  assertRouteTransition,
+  canTransitionPayment,
+  canTransitionRoute,
+  isTerminalPaymentState,
+  isTerminalRouteState,
+} from './state-machine.js';

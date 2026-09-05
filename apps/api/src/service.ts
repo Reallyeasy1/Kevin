@@ -10,12 +10,17 @@ import { createHash } from 'node:crypto';
 import { Decimal } from 'decimal.js';
 import type { FastifyBaseLogger } from 'fastify';
 import {
+  ROUTE_TRANSITIONS,
   assertPaymentTransition,
   assertRouteTransition,
+  isTerminalRouteState,
   FALLBACK_TASK_PROFILE,
   TaskProfile as TaskProfileSchema,
   type Classifier,
+  type ExactPayment,
   type ExecuteResponse,
+  type InferenceOffer,
+  PaymentRequirement as PaymentRequirementSchema,
   type PaymentClient,
   type PaymentRequirement,
   type PaymentState,
@@ -49,8 +54,14 @@ import {
 } from '@subbuddy/routing';
 import type { BalanceReader } from './balances.js';
 import { ApiError, fromPaymentError } from './errors.js';
-import type { RouteEvents } from './events.js';
+import type { Correlation, RouteEvents } from './events.js';
 import type { Metrics } from './metrics.js';
+
+/** §14: pre-payment quote attempts are bounded by min(this, remaining eligible offers). */
+export const MAX_QUOTE_ATTEMPTS = 3;
+const TERMINAL_STATES = (Object.keys(ROUTE_TRANSITIONS) as RouteState[]).filter(
+  isTerminalRouteState,
+);
 
 export interface ServiceConfig {
   network: XrplNetworkId;
@@ -99,10 +110,48 @@ export type RouteView = Receipt & {
   expiresAt: string;
 };
 
+/** GET /v1/routes (US-010): one row per completed route, receipt-level fields only (SEC-009). */
+export interface RouteListItem {
+  routeId: string;
+  createdAt: string;
+  state: RouteState;
+  mode: RouteRequest['mode'];
+  selected: { offerId: string; sellerName: string; modelId: string | null } | null;
+  asset: SettlementAssetCode;
+  quotedCost: string | null;
+  settledAmount: string | null;
+  transactionHash: string | null;
+  explorerUrl: string | null;
+}
+export interface RouteListPage {
+  routes: RouteListItem[];
+  nextCursor: string | null;
+}
+
 interface Ctx {
   routeId: string;
   state: RouteState;
   log: FastifyBaseLogger;
+}
+
+/**
+ * SEC-005 / INV-005: the payment about to be signed must equal the immutable Quote ROW, field by field.
+ * Amounts compare as decimals (the row is Decimal(20,6), the wire is the seller's string).
+ */
+export function assertExactMatchesQuote(
+  exact: ExactPayment,
+  quote: NonNullable<RouteReceipt['quote']>,
+  offer: InferenceOffer,
+): void {
+  const asset = quote.assetCode as SettlementAssetCode;
+  const mismatch = (field: string) =>
+    new PaymentError('QUOTE_REJECTED', `${field} differs from the stored quote`);
+  if (exact.destination !== quote.destination) throw mismatch('payTo');
+  if (!wireToUnits(exact.amount, asset).eq(quote.amount)) throw mismatch('amount');
+  if (exact.asset !== (offer.asset.currencyHex ?? 'XRP')) throw mismatch('asset');
+  if ((exact.issuer ?? null) !== (quote.assetIssuer ?? null)) throw mismatch('issuer');
+  if (exact.network !== quote.network) throw mismatch('network');
+  if (exact.invoiceId !== quote.invoiceId) throw mismatch('invoiceId');
 }
 
 export const sha256 = (s: string): string => createHash('sha256').update(s, 'utf8').digest('hex');
@@ -123,9 +172,9 @@ const WALKABLE = new Set<PaymentError['code']>([
 ]);
 
 export class RouteService {
-  // ponytail: two in-memory side tables the schema lacks columns for. Quote rows carry every field except
-  // resource/maxTimeoutSeconds (reconstructed in requirementFor on a restart); policy checks fall back to the
-  // payment row. Add Quote.resource/maxTimeoutSeconds and Route.policyDecision Json if a restart mid-route matters.
+  // ponytail: in-memory caches. Requirements are also persisted as Quote.requirementJson (INV-005), so the
+  // cache is a hot path only; policy decisions fall back to the payment row after a restart. Add
+  // Route.policyDecision Json if per-check evidence must survive a restart.
   private readonly requirements = new Map<string, PaymentRequirement>();
   private readonly policyDecisions = new Map<string, PolicyDecision>();
   private readonly sleep: (ms: number) => Promise<void>;
@@ -155,11 +204,7 @@ export class RouteService {
       expiresAt,
     });
     metrics.routesCreated += 1;
-    const ctx: Ctx = {
-      routeId: created.id,
-      state: 'CLASSIFYING',
-      log: this.d.log.child({ routeId: created.id, requestId, state: 'CLASSIFYING' }),
-    };
+    const ctx = this.ctx(created.id, 'CLASSIFYING', { requestId });
     events.emit(ctx.routeId, 'route.state_changed', 'CLASSIFYING');
 
     // FR-010/FR-011: the classifier falls back internally; anything escaping is a hard failure.
@@ -225,12 +270,14 @@ export class RouteService {
     }
 
     // FR-040 then FR-050/FR-051: quote the top offer, walk to the next on a per-seller failure (§14).
+    // Bounded to min(MAX_QUOTE_ATTEMPTS, eligible offers); all of this happens before any signature, so
+    // INV-004 holds: once a quote is accepted the walk stops and a paid route is never rerouted.
     const ranked = scoreOffers(eligible, profile, req.mode);
     await this.transition(ctx, 'QUOTING', { candidates: ranked.length });
     const tried = new Map<string, string>();
     let selected: { cand: ScoredCandidate; requirement: PaymentRequirement } | null = null;
     let lastError: PaymentError | null = null;
-    for (const cand of ranked) {
+    for (const cand of ranked.slice(0, MAX_QUOTE_ATTEMPTS)) {
       const request: SellerRequest = {
         offerId: cand.offer.offerId,
         endpoint: cand.offer.endpoint,
@@ -269,9 +316,7 @@ export class RouteService {
             ? 'selected'
             : tried.has(c.offer.offerId)
               ? 'quote_rejected'
-              : sel === null
-                ? 'quote_rejected'
-                : 'not_quoted',
+              : 'not_quoted',
         rejectionReasons: tried.has(c.offer.offerId) ? [tried.get(c.offer.offerId) as string] : [],
         qualityScore: c.qualityScore,
         costScore: c.costScore,
@@ -282,13 +327,27 @@ export class RouteService {
       }));
 
     if (!selected) {
+      // §14: attempts exhausted with no acceptable quote and nothing signed or paid. §9.1 has no
+      // QUOTING -> NO_ELIGIBLE_OFFER edge, so the route is FAILED; the public code is the last quote
+      // failure's (AT-004 pins QUOTE_REJECTED for an invalid requirement, §11.1 for over budget).
       await repo.saveCandidates(ctx.routeId, [...scoredInputs(null), ...ineligible]);
-      await this.transition(ctx, 'FAILED', { reason: lastError?.code ?? 'NO_QUOTE' });
-      throw fromPaymentError(
+      const err = fromPaymentError(
         lastError ??
           new PaymentError('SELLER_UNAVAILABLE', 'no seller quoted', { retryable: true }),
         ctx.routeId,
       );
+      await this.transition(ctx, 'FAILED', {
+        reason: 'QUOTE_ATTEMPTS_EXHAUSTED',
+        lastQuoteError: err.code,
+        attempts: tried.size,
+        maxAttempts: Math.min(MAX_QUOTE_ATTEMPTS, ranked.length),
+      });
+      metrics.observe('routeLatency', Date.now() - startedAt);
+      this.d.events.emit(ctx.routeId, 'route.failed', ctx.state, {
+        code: err.code,
+        message: err.message,
+      });
+      throw err;
     }
 
     const { cand, requirement } = selected;
@@ -304,13 +363,16 @@ export class RouteService {
       assetIssuer: requirement.issuer,
       network: requirement.network,
       rawRequirementHash: requirement.requirementHash,
+      // INV-005: the validated requirement with its exact wire strings (and the raw accepts[] entry inside
+      // it) so requirementFor rebuilds it byte-identical after a restart.
+      requirementJson: JSON.stringify(requirement),
       expiresAt: new Date(requirement.expiresAt),
     });
     this.requirements.set(ctx.routeId, requirement);
     const candidates = [...scoredInputs(cand.offer.offerId), ...ineligible];
     await repo.saveCandidates(ctx.routeId, candidates);
     await repo.updateRoute(ctx.routeId, { selectedOfferId: cand.offer.offerId });
-    ctx.log = ctx.log.child({ offerId: cand.offer.offerId, invoiceId: requirement.invoiceId });
+    this.bind(ctx, { offerId: cand.offer.offerId, invoiceId: requirement.invoiceId });
     await this.transition(ctx, 'QUOTED', {
       offerId: cand.offer.offerId,
       quotedCost: quotedUnits,
@@ -391,17 +453,11 @@ export class RouteService {
       return response(current?.state ?? route.state);
     }
 
-    const ctx: Ctx = {
-      routeId,
-      state: route.state,
-      log: this.d.log.child({
-        routeId,
-        requestId,
-        offerId: quote.offerId,
-        invoiceId: quote.invoiceId,
-        state: route.state,
-      }),
-    };
+    const ctx = this.ctx(routeId, route.state, {
+      requestId,
+      offerId: quote.offerId,
+      invoiceId: quote.invoiceId,
+    });
     const decision = await this.policyGate(route, quote, claim.paymentId);
     this.policyDecisions.set(routeId, decision);
     if (!decision.approved) {
@@ -534,10 +590,13 @@ export class RouteService {
       await repo.updatePayment(paymentId, { status: to, ...patch });
     };
 
-    // The only signing event (INV-011). SEC-005: re-check the exact payment against the immutable quote.
+    // The only signing event (INV-011). SEC-005: the ExactPayment about to be signed is compared with the
+    // STORED quote row (amount, payTo, asset, network, invoiceId), not with the in-memory requirement it was
+    // built from, and the requirement's own expiry is re-checked.
     let signed: SignedPayment;
     try {
       const exact = toExactPayment(requirement);
+      assertExactMatchesQuote(exact, quote, offer);
       assertExactMatchesRequirement(exact, requirement);
       signed = await signer.signExactPayment(exact);
     } catch (err) {
@@ -557,7 +616,7 @@ export class RouteService {
       transactionHash: signed.transactionHash,
       lastLedgerSequence: signed.lastLedgerSequence,
     });
-    ctx.log = ctx.log.child({ transactionHash: signed.transactionHash });
+    this.bind(ctx, { transactionHash: signed.transactionHash });
     await this.transition(ctx, 'SIGNED');
 
     await movePayment('SENT');
@@ -772,9 +831,60 @@ export class RouteService {
   private async transition(ctx: Ctx, to: RouteState, payload: Record<string, unknown> = {}) {
     ctx.state = assertRouteTransition(ctx.state, to);
     await this.d.repo.updateRoute(ctx.routeId, { state: to });
-    ctx.log = ctx.log.child({ state: to });
+    this.bind(ctx, {});
     ctx.log.info('route state changed');
     this.d.events.emit(ctx.routeId, 'route.state_changed', to, payload);
+  }
+
+  /** §19: one logger per route carrying routeId, requestId, offerId, invoiceId, transactionHash, state. */
+  private ctx(routeId: string, state: RouteState, ids: Correlation): Ctx {
+    const ctx: Ctx = { routeId, state, log: this.d.log };
+    this.bind(ctx, ids);
+    return ctx;
+  }
+
+  /** Record newly known correlation ids on the event bus and rebuild the route logger from the base logger. */
+  private bind(ctx: Ctx, ids: Correlation): void {
+    const merged = this.d.events.correlate(ctx.routeId, ids);
+    ctx.log = this.d.log.child({ routeId: ctx.routeId, ...merged, state: ctx.state });
+  }
+
+  // ---------------------------------------------------------------------------------------------------
+  // GET /v1/routes (US-010 history)
+  // ---------------------------------------------------------------------------------------------------
+
+  async listRoutes(limit: number, cursor?: string): Promise<RouteListPage> {
+    const rows = await this.d.repo.listRoutes({
+      limit,
+      states: TERMINAL_STATES,
+      ...(cursor ? { cursor } : {}),
+    });
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
+    return {
+      routes: page.map((r) => {
+        const offer = r.selectedOfferId ? this.d.registry.getOffer(r.selectedOfferId) : undefined;
+        return {
+          routeId: r.id,
+          createdAt: r.createdAt.toISOString(),
+          state: r.state,
+          mode: r.mode,
+          selected: r.selectedOfferId
+            ? {
+                offerId: r.selectedOfferId,
+                sellerName: offer?.displayName ?? r.selectedOfferId,
+                modelId: offer?.modelId ?? null,
+              }
+            : null,
+          asset: this.d.config.asset,
+          quotedCost: r.quotedCost === null ? null : new Decimal(r.quotedCost).toFixed(6),
+          settledAmount: r.settledAmount === null ? null : new Decimal(r.settledAmount).toFixed(6),
+          transactionHash: r.transactionHash,
+          explorerUrl: r.transactionHash ? this.explorer(r.transactionHash) : null,
+        };
+      }),
+      nextCursor: rows.length > limit && last ? last.id : null,
+    };
   }
 
   private explorer(hash: string): string {
@@ -804,13 +914,22 @@ export class RouteService {
     });
   }
 
-  /** Immutable quote for the paid request; rebuilt from the row after a restart (see class note). */
+  /**
+   * Immutable quote for the paid request. After a restart it is the persisted requirement JSON, byte-identical
+   * to what was validated (INV-005); the field-wise rebuild below only serves rows saved before that column.
+   */
   private requirementFor(route: RouteReceipt): PaymentRequirement {
     const cached = this.requirements.get(route.id);
     if (cached) return cached;
     const q = route.quote;
     const offer = q && this.d.registry.getOffer(q.offerId);
     if (!q || !offer) throw new Error('route has no quote');
+    if (q.requirementJson) {
+      const stored = PaymentRequirementSchema.parse(JSON.parse(q.requirementJson));
+      if (stored.invoiceId !== q.invoiceId || stored.requirementHash !== q.rawRequirementHash)
+        throw new PaymentError('QUOTE_REJECTED', 'stored requirement does not match quote row');
+      return stored;
+    }
     return {
       scheme: 'exact',
       network: q.network as XrplNetworkId,

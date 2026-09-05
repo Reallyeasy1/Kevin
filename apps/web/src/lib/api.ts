@@ -6,11 +6,12 @@ import {
   ROUTE_STATES,
   type ApiError,
   type ExecuteResponse,
-  type Receipt,
+  type OffersResponse,
   type RouteEvent,
   type RouteRequest,
   type RouteResponse,
   type RouteState,
+  type RouteView,
   type WalletResponse,
 } from '@subbuddy/contracts';
 
@@ -22,9 +23,64 @@ export const EXPLORER_BASE =
   process.env.NEXT_PUBLIC_XRPL_EXPLORER_BASE ?? 'https://testnet.xrpl.org/transactions/';
 const DEMO_KEY = process.env.NEXT_PUBLIC_DEMO_API_KEY ?? '';
 
-/** GET /v1/routes/:id (§11.4): receipt plus the final model result when available (apps/api RouteView). */
-// ponytail: mirrors apps/api/src/service.ts RouteView until @subbuddy/contracts exports it.
-export type RouteDetail = Receipt & { result?: string | null; expiresAt?: string };
+/** GET /v1/routes/:id (§11.4): receipt plus the final model result when available. */
+export type RouteDetail = RouteView;
+
+/** GET /v1/offers (§11.6) plus the FR-021 hub status; the field is absent while only the curated registry exists. */
+export type OffersView = OffersResponse & {
+  hubStatus?: { available: boolean; imported?: number; skipped?: number; reasons?: string[] };
+};
+
+/** One row of GET /v1/routes (US-010): completed routes, newest first. */
+export interface RouteListItem {
+  routeId: string;
+  createdAt: string;
+  state: RouteState;
+  sellerName: string | null;
+  quotedCost: string | null;
+  settledAmount: string | null;
+  asset: string | null;
+  transactionHash: string | null;
+  explorerUrl: string | null;
+}
+export interface RouteList {
+  routes: RouteListItem[];
+  nextCursor: string | null;
+}
+
+const str = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null);
+
+// ponytail: the list endpoint is landing in apps/api concurrently; normalise the plausible key names once here
+// so the page reads one shape. Collapse to the final field names once the contract is exported.
+export function normalizeRouteList(raw: unknown): RouteList {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  const rows = (
+    Array.isArray(o.routes) ? o.routes : Array.isArray(o.items) ? o.items : []
+  ) as Record<string, unknown>[];
+  const routes: RouteListItem[] = [];
+  for (const r of rows) {
+    const routeId = str(r.routeId) ?? str(r.id);
+    const state = r.state;
+    if (!routeId || !isRouteState(state)) continue;
+    const sel = (r.selected ?? null) as Record<string, unknown> | null;
+    const pay = (r.payment ?? null) as Record<string, unknown> | null;
+    const hash = str(r.transactionHash) ?? str(pay?.transactionHash);
+    routes.push({
+      routeId,
+      createdAt: str(r.createdAt) ?? str(r.updatedAt) ?? '',
+      state,
+      sellerName:
+        str(r.sellerName) ?? str(sel?.sellerName) ?? str(r.selectedOfferId) ?? str(sel?.offerId),
+      quotedCost: str(r.quotedCost) ?? str(sel?.quotedCost),
+      settledAmount: str(r.settledAmount) ?? str(pay?.amount),
+      asset: str(r.asset) ?? str(sel?.asset) ?? str(pay?.assetCode),
+      transactionHash: hash,
+      explorerUrl:
+        str(r.explorerUrl) ?? str(pay?.explorerUrl) ?? (hash ? EXPLORER_BASE + hash : null),
+    });
+  }
+  return { routes, nextCursor: str(o.nextCursor) ?? str(o.cursor) };
+}
 
 export class ApiRequestError extends Error {
   constructor(
@@ -81,6 +137,12 @@ export const api = {
       body: JSON.stringify({ prompt }),
     }),
   getRoute: (routeId: string) => call<RouteDetail>(`/v1/routes/${encodeURIComponent(routeId)}`),
+  offers: () => call<OffersView>('/v1/offers'),
+  listRoutes: async (limit: number, cursor: string | null) => {
+    const q = new URLSearchParams({ limit: String(limit) });
+    if (cursor) q.set('cursor', cursor);
+    return normalizeRouteList(await call<unknown>(`/v1/routes?${q}`));
+  },
 };
 
 export function isRouteState(s: unknown): s is RouteState {

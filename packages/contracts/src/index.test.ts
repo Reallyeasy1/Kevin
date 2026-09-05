@@ -7,7 +7,9 @@ import {
   PaymentReceipt,
   PaymentRequirement,
   RouteRequest,
+  RouteView,
   TaskProfile,
+  canTransitionRoute,
   XRPL_NETWORKS,
   XrplNetworkId,
 } from './index.js';
@@ -109,6 +111,17 @@ describe('contracts', () => {
       signedTxBlob: '1200002280000000...',
     });
     expect(parsed).not.toHaveProperty('signedTxBlob');
+  });
+
+  it('RouteView is the receipt plus selected, result and expiresAt (§11.4)', () => {
+    expect(canTransitionRoute('CLASSIFYING', 'ROUTING')).toBe(true);
+    const shape = RouteView.shape;
+    expect(Object.keys(shape)).toEqual(
+      expect.arrayContaining(['routeId', 'payment', 'selected', 'result', 'expiresAt']),
+    );
+    expect(shape.result.safeParse(null).success).toBe(true);
+    expect(shape.selected.safeParse(null).success).toBe(true);
+    expect(shape.expiresAt.safeParse('nope').success).toBe(false);
   });
 
   it('pins the Testnet CAIP-2 id used on the x402 wire', () => {

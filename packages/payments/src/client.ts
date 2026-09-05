@@ -5,11 +5,13 @@ import {
   decodePaymentResponseHeader,
   paymentRequiredFromWire,
 } from 'x402-xrpl';
+import { Decimal } from 'decimal.js';
 import type { Payment, TransactionMetadata, TxResponse } from 'xrpl';
 import {
   SellerInferenceResponse,
   type CurrencyHex,
   type InferenceOffer,
+  type LedgerRange,
   type PaidSellerResponse,
   type PayAndRetryInput,
   type PaymentClient,
@@ -17,6 +19,7 @@ import {
   type PaymentResponseMeta,
   type ProviderRegistry,
   type SellerRequest,
+  type SettlementAssetCode,
   type SettlementResult,
   type XrplAddress,
 } from '@subbuddy/contracts';
@@ -58,12 +61,32 @@ export interface PaymentClientOptions {
 
 type Body = { status: number; headers: Headers; json: unknown };
 
+/** SEC-004: read at most `max` bytes; cancel the stream and throw past the cap instead of buffering it all. */
+export async function readBodyCapped(res: Response, max: number): Promise<string> {
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel();
+      throw new RangeError('response too large');
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 /** Classify a ledger fact against the persisted LastLedgerSequence (§9.2). */
 export function classifySettlement(
   result: SettlementResult,
   lastLedgerSequence: number,
 ): 'SETTLED' | 'VALIDATED_FAILED' | 'PENDING' {
   if (result.status === 'validated') return result.success ? 'SETTLED' : 'VALIDATED_FAILED';
+  if (result.status === 'unknown') return 'PENDING';
   return result.currentLedgerIndex > lastLedgerSequence ? 'VALIDATED_FAILED' : 'PENDING';
 }
 
@@ -121,9 +144,14 @@ export class X402PaymentClient implements PaymentClient {
       body,
       signal: AbortSignal.timeout(timeoutMs),
     });
-    const text = await res.text();
-    if (Buffer.byteLength(text) > this.opts.maxResponseBytes)
-      throw new PaymentError('SELLER_MISCONFIGURED', 'seller response too large');
+    let text: string;
+    try {
+      text = await readBodyCapped(res, this.opts.maxResponseBytes);
+    } catch (err) {
+      if (err instanceof RangeError)
+        throw new PaymentError('SELLER_MISCONFIGURED', 'seller response too large');
+      throw err;
+    }
     let json: unknown = null;
     try {
       json = text ? JSON.parse(text) : null;
@@ -140,6 +168,7 @@ export class X402PaymentClient implements PaymentClient {
     try {
       res = await this.post(request, {}, this.opts.quoteTimeoutMs);
     } catch (cause) {
+      if (cause instanceof PaymentError) throw cause; // e.g. oversized body (SEC-004)
       throw new PaymentError('SELLER_UNAVAILABLE', 'seller did not respond', {
         retryable: true,
         cause,
@@ -269,23 +298,31 @@ export class X402PaymentClient implements PaymentClient {
   }
 
   // FR-072 / INV-009: SETTLED only on validated tesSUCCESS.
-  async resolveTransaction(hash: string): Promise<SettlementResult> {
+  async resolveTransaction(hash: string, range?: LedgerRange): Promise<SettlementResult> {
     const client = await asClient(this.opts.ledger);
-    const isNotFound = (err: unknown): boolean =>
-      typeof err === 'object' &&
-      err !== null &&
-      (err as { data?: { error?: string } }).data?.error === 'txnNotFound';
+    type NotFound = { data?: { error?: string; searched_all?: boolean } };
+    const isNotFound = (err: unknown): err is NotFound =>
+      typeof err === 'object' && err !== null && (err as NotFound).data?.error === 'txnNotFound';
 
     let tx: TxResponse<Payment> | null;
     try {
       tx = await withBackoff(
-        () => client.request({ command: 'tx', transaction: hash }) as Promise<TxResponse<Payment>>,
+        () =>
+          client.request({
+            command: 'tx',
+            transaction: hash,
+            ...(range ? { min_ledger: range.minLedger, max_ledger: range.maxLedger } : {}),
+          }) as Promise<TxResponse<Payment>>,
         {
           retryOn: (err) => !isNotFound(err),
         },
       );
     } catch (err) {
       if (!isNotFound(err)) throw err;
+      // With a range, rippled reports whether it searched every ledger in it. A node lacking history
+      // must not turn a live payment into VALIDATED_FAILED (INV-009).
+      if (range && err.data?.searched_all === false)
+        return { status: 'unknown', transactionHash: hash };
       tx = null;
     }
 
@@ -319,5 +356,30 @@ export class X402PaymentClient implements PaymentClient {
       amount,
       asset: asset as 'XRP' | CurrencyHex,
     };
+  }
+
+  /** §11.7 / FR-060: XRP and the configured IOU balance in asset units, 6 dp. Reads only; never the seed. */
+  async getBalances(address: string): Promise<{ asset: SettlementAssetCode; amount: string }[]> {
+    const client = await asClient(this.opts.ledger);
+    const { issuer, currencyHex } = this.opts.expected;
+    const [info, lines] = await withBackoff(() =>
+      Promise.all([
+        client.request({ command: 'account_info', account: address, ledger_index: 'validated' }),
+        client.request({
+          command: 'account_lines',
+          account: address,
+          peer: issuer,
+          ledger_index: 'validated',
+        }),
+      ]),
+    );
+    const line = lines.result.lines.find((l) => l.currency.toUpperCase() === currencyHex);
+    return [
+      { asset: 'RLUSD', amount: new Decimal(line?.balance ?? '0').toFixed(6) },
+      {
+        asset: 'XRP',
+        amount: new Decimal(info.result.account_data.Balance).div(1_000_000).toFixed(6),
+      },
+    ];
   }
 }

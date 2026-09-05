@@ -138,6 +138,11 @@ export class CuratedRegistry implements ProviderRegistry {
     return this.offers.filter((o) => o.enabled);
   }
 
+  /** Every validated record, disabled included (used by MergedRegistry to dedupe by endpoint). */
+  allOffers(): InferenceOffer[] {
+    return [...this.offers];
+  }
+
   getOffer(offerId: string): InferenceOffer | undefined {
     return this.offers.find((o) => o.offerId === offerId && o.enabled);
   }

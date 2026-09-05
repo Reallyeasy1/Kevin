@@ -223,6 +223,23 @@ describe('helpers', () => {
     expect(() => toDrops('0.0000001')).toThrow();
   });
 
+  it('openai-compatible adapter aborts a streamed body past the size cap (SEC-004)', async () => {
+    let pulls = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls++;
+        controller.enqueue(new Uint8Array(256 * 1024));
+      },
+    });
+    const up = openAiCompatibleUpstream({
+      baseUrl: 'https://llm.test/v1',
+      apiKey: 'k',
+      fetchImpl: async () => new Response(stream, { status: 200 }),
+    });
+    await expect(up.complete({ modelId: 'm', prompt: 'p' })).rejects.toThrow(/too large/);
+    expect(pulls).toBeLessThan(10);
+  });
+
   it('openai-compatible adapter maps the wire shape and sends the key only in the header', async () => {
     const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       expect((init!.headers as Record<string, string>)['authorization']).toBe('Bearer k-secret');

@@ -34,6 +34,8 @@ A prompt-aware economic routing layer that selects an inference offer and purcha
 
 The [XRPL AI Hub](https://xrpl-ai.org/) is the live directory of x402 services on XRPL, priced in XRP or RLUSD. SubBuddy is designed to draw its offers from that market (FR-021, P1 `XrplAiHubRegistry`). The MVP routes over a curated, version-controlled registry of three demo sellers because hub listings are Mainnet services and would yield no eligible Testnet offers under `APP_ENV=hackathon`. The `ProviderRegistry` interface is the seam; the hub-backed implementation slots in without touching routing or UI.
 
+P1 is implemented as a build-time import: `packages/config/hub-offers.json` holds listings captured from the hub (endpoint, payTo, CAIP-2 network, asset, price, capabilities), and `XrplAiHubRegistry` normalises them into the FR-020 offer schema with `source: "xrpl-ai-hub"`, `hubServiceId` and `hubUrl`. Invalid records are skipped with a logged reason, only the configured network and settlement asset pass, and Mainnet listings are excluded under `APP_ENV=hackathon` (SEC-010). `MergedRegistry` is CuratedRegistry ∪ hub, deduplicated by endpoint with curated fields winning, versioned as one hash (INV-010); its `hubStatus` drives the "hub discovery unavailable" notice. Because every hub listing captured so far is Mainnet, the demo runs curated-only and shows that notice; point `hub-offers.json` at a Testnet x402 seller to watch the agent pick a hub-discovered offer.
+
 ## Architecture
 
 ```mermaid
@@ -66,15 +68,18 @@ Retries resend the same blob; a quote is never signed twice. Details, state mach
 ## Repository layout
 
 ```text
-apps/web        Next.js + Tailwind single-page router UI, receipts, history
+apps/web        Next.js + Tailwind single-page router UI, receipts, /history (paginated past routes from GET /v1/routes)
 apps/api        Fastify buyer API: routes, policy gate, settlement state machine, SSE events
 apps/seller     Express + x402-xrpl seller: 402 gate, facilitator settle, upstream model
 packages/contracts   Zod wire schemas, route/payment state machines
 packages/routing     classifier (LLM + deterministic fallback), eligibility, scoring, explanation
 packages/payments    xrpl.js + x402-xrpl adapter behind PaymentClient / WalletSigner
 packages/database    Prisma schema, repository, spend ledger, in-memory fake for tests
-packages/config      env validation (SEC-010), curated offer registry
-tests/e2e            mocked Playwright flow (no network)
+packages/config      env validation (SEC-010), curated offer registry, XRPL AI Hub import (hub-offers.json)
+tests/acceptance     PRD §17 AT-001..AT-012 + NFR-001/004/005 through the buyer API wire contract
+tests/fakes          fake x402 seller, fake ledger, recording signer/payment client, stub classifier
+tests/e2e            mocked Playwright flows (route, history; no network)
+scripts/             smoke-testnet.ts, the manual live Testnet smoke test (never on CI)
 ```
 
 ## Setup
@@ -139,9 +144,9 @@ With `CLASSIFIER_PROVIDER=mock` and `SELLER_UPSTREAM_PROVIDER=mock` (the default
 ## Test
 
 ```bash
-pnpm test         # Vitest: unit + mocked integration across all packages, no network
-pnpm test:e2e     # Playwright: one mocked no-payment route through the real UI
-pnpm typecheck
+pnpm test         # Vitest: unit, mocked integration and PRD §17 acceptance tests, no network
+pnpm test:e2e     # Playwright: mocked route and /history flows through the real UI
+pnpm typecheck    # all packages, scripts/ and tests/
 pnpm lint
 ```
 
@@ -149,7 +154,14 @@ Nothing in `pnpm test` or `pnpm test:e2e` touches XRPL, the facilitator, or an u
 
 ### Manual live Testnet smoke test (PRD §18.3)
 
-Run this by hand before submission. It must never run on ordinary CI commits.
+Run this by hand before submission. It must never run on ordinary CI commits. The scripted version does steps 3 to 7 for you and prints the evidence rows; see [docs/LIVE_SMOKE.md](docs/LIVE_SMOKE.md) for what each step proves and how to troubleshoot:
+
+```bash
+pnpm dev:seller && pnpm dev:api          # two terminals, real Testnet .env
+pnpm smoke:testnet -- 0.020000           # route, pay, verify on ledger (AT-011), re-execute (AT-005)
+```
+
+The UI walk-through:
 
 1. Fund and configure wallets as above. Start seller, API, and web with real Testnet settings.
 2. Open http://localhost:3000. Confirm the Testnet badge and a non-zero agent wallet balance.
@@ -157,7 +169,8 @@ Run this by hand before submission. It must never run on ordinary CI commits.
 4. Watch the timeline: classification, three candidates, selection, 402 quote, policy approval, signed, paid request sent, verifying, succeeded.
 5. Expand the receipt. Copy the transaction hash and open the explorer link; confirm destination, amount, and asset match the receipt (AT-011).
 6. Press execute again or refresh the page and re-execute the same route. Confirm no second payment is created and the same hash is returned (AT-005).
-7. Record the evidence in [docs/EVIDENCE.md](docs/EVIDENCE.md).
+7. Open **History**: the route appears with its state, quoted vs settled amount and the explorer link (US-010).
+8. Record the evidence in [docs/EVIDENCE.md](docs/EVIDENCE.md).
 
 | Run | Date (UTC) | Route ID | Tx hash | Explorer link | Amount / asset | Result |
 | --- | --- | --- | --- | --- | --- | --- |

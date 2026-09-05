@@ -5,6 +5,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import cors from '@fastify/cors';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import {
   ExecuteRequest,
   RouteRequest,
@@ -58,6 +59,11 @@ export interface AppOptions {
   logger?: boolean;
 }
 
+const RouteListQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  cursor: z.string().min(1).max(64).optional(),
+});
+
 function bearerMatches(header: string | undefined, key: string): boolean {
   if (!header?.startsWith('Bearer ')) return false;
   const a = Buffer.from(header.slice(7));
@@ -109,7 +115,18 @@ export async function buildApp(
   });
 
   app.get('/health', async () => ({ status: 'ok', service: 'api' }));
-  app.get('/metrics', async () => metrics.snapshot());
+  // §19 metrics: Prometheus text by default (auth-protected like every non-/health route); JSON on request.
+  app.get('/metrics', async (req, reply) => {
+    if (req.headers.accept?.includes('application/json')) return metrics.snapshot();
+    return reply.type('text/plain; version=0.0.4; charset=utf-8').send(metrics.toPrometheus());
+  });
+
+  // US-010: completed routes, newest first. `cursor` is the previous page's nextCursor.
+  app.get<{ Querystring: { limit?: string; cursor?: string } }>('/v1/routes', async (req) => {
+    const parsed = RouteListQuery.safeParse(req.query);
+    if (!parsed.success) throw new ApiError('VALIDATION_ERROR', 'Invalid limit or cursor.');
+    return service.listRoutes(parsed.data.limit, parsed.data.cursor);
+  });
 
   // §11.2
   app.post('/v1/routes', async (req, reply) => {
@@ -175,11 +192,16 @@ export async function buildApp(
     req.raw.on('close', end);
   });
 
-  // §11.6: offer records carry no secrets by construction (FR-020).
-  app.get('/v1/offers', async () => ({
-    registryVersion: registry.registryVersion,
-    offers: await registry.listActiveOffers(),
-  }));
+  // §11.6: offer records carry no secrets by construction (FR-020). Each offer carries its `source`;
+  // a hub-backed registry (FR-021 MergedRegistry) also exposes `hubStatus` for the discovery notice.
+  app.get('/v1/offers', async () => {
+    const hubStatus = (registry as { hubStatus?: unknown }).hubStatus;
+    return {
+      registryVersion: registry.registryVersion,
+      offers: await registry.listActiveOffers(),
+      ...(hubStatus !== undefined ? { hubStatus } : {}),
+    };
+  });
 
   // §11.7: address and balances only (INV-007).
   app.get('/v1/wallet', async () => ({

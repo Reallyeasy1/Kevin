@@ -45,6 +45,8 @@ export interface QuoteInput {
   assetIssuer: string | null;
   network: string;
   rawRequirementHash: string;
+  /** Exact `accepts[]` entry as JSON (INV-005). */
+  requirementJson?: string | null;
   expiresAt: Date;
 }
 
@@ -107,6 +109,15 @@ export function createRepository(db: Db) {
     async saveQuote(input: QuoteInput) {
       const row = await db.quote.create({ data: input });
       return { id: row.id };
+    },
+
+    /** INV-005: the stored accepts[] entry, or null for quotes saved before it existed. */
+    async getQuoteRequirementJson(routeId: string): Promise<string | null> {
+      const q = await db.quote.findUnique({
+        where: { routeId },
+        select: { requirementJson: true },
+      });
+      return q?.requirementJson ?? null;
     },
 
     /**
@@ -178,6 +189,33 @@ export function createRepository(db: Db) {
         quote: r.quote && { ...r.quote, amount: money(r.quote.amount) },
         payment: payment && { ...payment, amount: money(payment.amount) },
       };
+    },
+
+    /**
+     * US-010 history: terminal routes, newest first, keyset-paginated by route id (`cursor` = last id seen).
+     * Returns one row past `limit` so the caller knows whether a next page exists.
+     */
+    async listRoutes(opts: { limit: number; cursor?: string; states?: RouteState[] }) {
+      const rows = await db.route.findMany({
+        where: opts.states ? { state: { in: opts.states } } : {},
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: opts.limit + 1,
+        ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
+        include: {
+          quote: { select: { amount: true, offerId: true } },
+          payment: { select: { amount: true, status: true, transactionHash: true } },
+        },
+      });
+      return rows.map((r) => ({
+        id: r.id,
+        createdAt: r.createdAt,
+        state: r.state,
+        mode: r.mode,
+        selectedOfferId: r.selectedOfferId,
+        quotedCost: r.quote ? money(r.quote.amount) : null,
+        settledAmount: r.payment?.status === 'SETTLED' ? money(r.payment.amount) : null,
+        transactionHash: r.payment?.transactionHash ?? null,
+      }));
     },
   };
 }

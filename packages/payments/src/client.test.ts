@@ -80,6 +80,27 @@ describe('obtainRequirement (FR-050)', () => {
     expect(init.headers).not.toHaveProperty('PAYMENT-SIGNATURE');
   });
 
+  it('aborts a streamed body past maxResponseBytes before buffering it (SEC-004)', async () => {
+    let pulls = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls++;
+        controller.enqueue(new Uint8Array(1024));
+      },
+    });
+    const small = new X402PaymentClient({
+      ledger: mockLedger().handle,
+      registry: { listActiveOffers: async () => [offer], registryVersion: 'test' },
+      expected,
+      fetchImpl: async () => new Response(stream, { status: 402 }),
+      maxResponseBytes: 4096,
+    });
+    await expect(small.obtainRequirement(request)).rejects.toMatchObject({
+      code: 'SELLER_MISCONFIGURED',
+    });
+    expect(pulls).toBeLessThan(10);
+  });
+
   it('treats 200 before payment as seller misconfiguration', async () => {
     await expect(
       client(async () => json(200, { ok: true })).obtainRequirement(request),
@@ -190,6 +211,16 @@ describe('payAndRetry (FR-070/071)', () => {
   });
 });
 
+describe('getBalances (§11.7)', () => {
+  it('reads XRP and the configured IOU in asset units, 6 dp', async () => {
+    const ledger = mockLedger({ xrpBalanceDrops: '12345678', iouBalance: '5' });
+    await expect(client(fetch, ledger).getBalances(SELLER)).resolves.toEqual([
+      { asset: 'RLUSD', amount: '5.000000' },
+      { asset: 'XRP', amount: '12.345678' },
+    ]);
+  });
+});
+
 describe('resolveTransaction (FR-072, INV-009)', () => {
   const txResult = (TransactionResult: string, validated = true) => ({
     result: {
@@ -244,6 +275,25 @@ describe('resolveTransaction (FR-072, INV-009)', () => {
       currentLedgerIndex: 5015,
     });
     expect(classifySettlement(pending, 5020)).toBe('PENDING');
+  });
+
+  it('passes the ledger range and reports "unknown" when the node did not search it all', async () => {
+    const range = { minLedger: 5000, maxLedger: 5020 };
+    const partial = mockLedger({ validatedIndex: 5030, searchedAll: false });
+    const unknown = await client(fetch, partial).resolveTransaction(
+      paid.signed.transactionHash,
+      range,
+    );
+    expect(unknown).toEqual({ status: 'unknown', transactionHash: paid.signed.transactionHash });
+    expect(classifySettlement(unknown, 5020)).toBe('PENDING');
+    expect(partial.request).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'tx', min_ledger: 5000, max_ledger: 5020 }),
+    );
+
+    const full = mockLedger({ validatedIndex: 5030, searchedAll: true });
+    const gone = await client(fetch, full).resolveTransaction(paid.signed.transactionHash, range);
+    expect(gone).toMatchObject({ status: 'not_found', currentLedgerIndex: 5030 });
+    expect(classifySettlement(gone, 5020)).toBe('VALIDATED_FAILED');
   });
 
   it('not found past LastLedgerSequence is a failed payment; before it is pending', async () => {

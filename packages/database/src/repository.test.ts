@@ -41,6 +41,7 @@ async function seed() {
     assetIssuer: 'rISSUER',
     network: 'xrpl:1',
     rawRequirementHash: 'h',
+    requirementJson: '{"scheme":"exact","amount":"0.012345"}',
     expiresAt: new Date('2026-09-05T00:02:00Z'),
   });
   const claim: ClaimPaymentInput = {
@@ -117,6 +118,14 @@ describe('repository', () => {
     expect(r?.execution?.status).toBe('succeeded');
     expect(JSON.stringify(r)).not.toContain('SECRET');
     expect((await repo.getSignedPayment(route.id))?.signedTxBlob).toBe('SECRET');
+  });
+
+  it('stores the exact accepts[] entry with the quote (INV-005)', async () => {
+    const { repo, route } = await seed();
+    expect(await repo.getQuoteRequirementJson(route.id)).toBe(
+      '{"scheme":"exact","amount":"0.012345"}',
+    );
+    expect(await repo.getQuoteRequirementJson('nope')).toBeNull();
   });
 });
 

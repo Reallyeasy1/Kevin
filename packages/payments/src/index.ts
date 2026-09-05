@@ -19,4 +19,9 @@ export {
   type ValidateQuoteContext,
 } from './quote.js';
 export { XrplWalletSigner, type WalletSignerOptions } from './signer.js';
-export { X402PaymentClient, classifySettlement, type PaymentClientOptions } from './client.js';
+export {
+  X402PaymentClient,
+  classifySettlement,
+  readBodyCapped,
+  type PaymentClientOptions,
+} from './client.js';

@@ -50,6 +50,8 @@ export interface MockLedgerState {
   ownerCount: number;
   iouBalance: string;
   tx?: unknown;
+  /** rippled's `searched_all` on txnNotFound when the request carried a ledger range. */
+  searchedAll?: boolean;
 }
 
 /** Mock of the xrpl.js Client surface this package touches. No network. */
@@ -79,8 +81,10 @@ export function mockLedger(state: Partial<MockLedgerState> = {}) {
         };
       case 'tx':
         if (s.tx === undefined) {
-          const err = new Error('txnNotFound') as Error & { data: { error: string } };
-          err.data = { error: 'txnNotFound' };
+          const err = new Error('txnNotFound') as Error & {
+            data: { error: string; searched_all?: boolean | undefined };
+          };
+          err.data = { error: 'txnNotFound', searched_all: s.searchedAll };
           throw err;
         }
         return s.tx;

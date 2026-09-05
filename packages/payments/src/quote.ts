@@ -130,6 +130,7 @@ export function validateQuote(raw: RawRequirement, ctx: ValidateQuoteContext): P
     maxTimeoutSeconds: raw.maxTimeoutSeconds,
     expiresAt: expiresAt.toISOString(),
     requirementHash: requirementHash(raw),
+    rawRequirementJson: JSON.stringify(raw),
   };
 }
 

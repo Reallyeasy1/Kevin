@@ -1,171 +1,12 @@
 /**
  * Buyer API tests. Payments, signer, balances are mocked; the database is the package's in-memory fake
- * (real repository code, real FR-071 unique constraints). No network.
+ * (real repository code, real FR-071 unique constraints). No network. Harness: harness.test-helper.ts.
  */
-import { describe, expect, it, vi } from 'vitest';
-import {
-  isTerminalRouteState,
-  type PaidSellerResponse,
-  type PaymentClient,
-  type PaymentRequirement,
-  type RouteState,
-  type SellerRequest,
-  type SettlementResult,
-  type WalletSigner,
-} from '@subbuddy/contracts';
-import { CuratedRegistry, buildCuratedOffers, type SharedEnv } from '@subbuddy/config';
-import { createRepository, createSpendLedger } from '@subbuddy/database';
+import { describe, expect, it } from 'vitest';
+import type { SellerRequest } from '@subbuddy/contracts';
 import { PaymentError } from '@subbuddy/payments';
-import { FallbackClassifier } from '@subbuddy/routing';
-// ponytail: the fake Prisma client is test-only and not on the package's public export map.
-import { createFakeDb } from '../../../packages/database/src/fake-db.js';
-import { buildApp } from './app.js';
-import { RouteEvents } from './events.js';
-import { Metrics } from './metrics.js';
-
-const RLUSD_HEX = '524C555344000000000000000000000000000000';
-const ISSUER = 'rQhWct2fv4Vc4KRjRgMrxa8xPN9Zx9iLKV';
-const SELLER = 'rhaDe3NBxgUSLL12N5Sxpii2xy8vSyXNG6';
-const WALLET = 'rN7n7otQDd6FczFgLdSqtcsAUxDkw6fzRH';
-const KEY = 'demo-key-0123456789abcdef';
-const AUTH = { authorization: `Bearer ${KEY}` };
-const PROMPT = 'Implement Dijkstra in typescript and explain its complexity.';
-
-const env: SharedEnv = {
-  APP_ENV: 'hackathon',
-  XRPL_NETWORK: 'xrpl:1',
-  XRPL_WSS_URL: 'wss://s.altnet.rippletest.net:51233',
-  XRPL_EXPLORER_BASE: 'https://testnet.xrpl.org/transactions/',
-  SETTLEMENT_ASSET: 'RLUSD',
-  RLUSD_ISSUER: ISSUER,
-  RLUSD_CURRENCY_HEX: RLUSD_HEX,
-  FACILITATOR_URL: 'https://facilitator.example',
-  SELLER_BASE_URL: 'http://127.0.0.1:4020',
-  SELLER_PAYTO_ADDRESS: SELLER,
-};
-
-const requirementFor = (req: SellerRequest, amount: string): PaymentRequirement => ({
-  scheme: 'exact',
-  network: 'xrpl:1',
-  asset: RLUSD_HEX,
-  issuer: ISSUER,
-  payTo: SELLER,
-  amount,
-  invoiceId: `inv-${req.offerId}-${req.requestId}`,
-  resource: req.endpoint,
-  maxTimeoutSeconds: 300,
-  expiresAt: new Date(Date.now() + 300_000).toISOString(),
-  requirementHash: 'a'.repeat(64),
-});
-
-const okResult = (req: SellerRequest): PaidSellerResponse => ({
-  result: {
-    requestId: req.requestId,
-    offerId: req.offerId,
-    modelId: 'demo/fast-code',
-    content: 'function dijkstra() {}',
-    usage: { inputTokens: 20, outputTokens: 40 },
-    providerLatencyMs: 900,
-  },
-  paymentResponse: { success: true, transactionHash: 'HASH1', network: 'xrpl:1', payer: WALLET },
-});
-
-const settled: SettlementResult = {
-  status: 'validated',
-  transactionHash: 'HASH1',
-  success: true,
-  resultCode: 'tesSUCCESS',
-  ledgerIndex: 1005,
-  validatedAt: new Date().toISOString(),
-  destination: SELLER,
-  amount: '0.006200',
-  asset: RLUSD_HEX,
-};
-
-async function harness(over: { cap?: string; balance?: string } = {}) {
-  const db = createFakeDb();
-  const registry = new CuratedRegistry(buildCuratedOffers(env));
-  const events = new RouteEvents();
-  const metrics = new Metrics();
-  const payments = {
-    obtainRequirement: vi.fn(async (req: SellerRequest) => requirementFor(req, '0.006200')),
-    payAndRetry: vi.fn(async ({ request }: { request: SellerRequest }) => okResult(request)),
-    resolveTransaction: vi.fn(async () => settled),
-  };
-  const signer = {
-    getAddress: vi.fn(async () => WALLET),
-    signExactPayment: vi.fn(async () => ({
-      signedTxBlob: 'DEADBEEF',
-      transactionHash: 'HASH1',
-      payerAddress: WALLET,
-      sequence: 7,
-      lastLedgerSequence: 1100,
-    })),
-  };
-  const balances = {
-    getBalances: vi.fn(async () => [
-      { asset: 'RLUSD' as const, amount: over.balance ?? '5.000000' },
-      { asset: 'XRP' as const, amount: '25.000000' },
-    ]),
-  };
-  const app = await buildApp({
-    logger: false,
-    deps: {
-      repo: createRepository(db),
-      spend: createSpendLedger(db),
-      registry,
-      classifier: new FallbackClassifier(),
-      payments: payments as unknown as PaymentClient,
-      signer: signer as unknown as WalletSigner,
-      balances,
-      events,
-      metrics,
-      sleep: async () => {},
-      config: {
-        network: 'xrpl:1',
-        asset: 'RLUSD',
-        hourlySpendCap: over.cap ?? '1.000000',
-        mandateTtlSeconds: 300,
-        explorerBase: env.XRPL_EXPLORER_BASE,
-        walletAddress: WALLET,
-        maxResolveAttempts: 3,
-      },
-    },
-    registry,
-    events,
-    metrics,
-    balances,
-    demoApiKey: KEY,
-    wallet: { address: WALLET, network: 'xrpl:1', asset: 'RLUSD' },
-  });
-  const terminal = (routeId: string) =>
-    new Promise<RouteState>((resolve) => {
-      const done = events.replay(routeId).find((e) => isTerminalRouteState(e.state));
-      if (done) return resolve(done.state);
-      const off = events.subscribe(routeId, (e) => {
-        if (isTerminalRouteState(e.state)) {
-          off();
-          resolve(e.state);
-        }
-      });
-    });
-  const route = async (body: Record<string, unknown> = {}) =>
-    app.inject({
-      method: 'POST',
-      url: '/v1/routes',
-      headers: AUTH,
-      payload: { prompt: PROMPT, mode: 'balanced', maxCost: '0.020000', ...body },
-    });
-  const execute = (id: string, prompt = PROMPT) =>
-    app.inject({
-      method: 'POST',
-      url: `/v1/routes/${id}/execute`,
-      headers: AUTH,
-      payload: { prompt },
-    });
-  const get = (id: string) => app.inject({ method: 'GET', url: `/v1/routes/${id}`, headers: AUTH });
-  return { app, db, payments, signer, balances, events, metrics, terminal, route, execute, get };
-}
+import { AUTH, PROMPT, WALLET, harness, requirementFor } from './harness.test-helper.js';
+import { MAX_QUOTE_ATTEMPTS } from './service.js';
 
 describe('auth and envelope (SEC-011, §11.1)', () => {
   it('rejects every /v1 call without the demo key, before any processing', async () => {
@@ -263,6 +104,54 @@ describe('POST /v1/routes (§11.2)', () => {
       QUOTE_OVER_BUDGET: 1,
       SELLER_UNAVAILABLE: 2,
     });
+    expect(h.metrics.noEligibleOffer).toBe(0);
+    expect((await h.get(fail.json().error.routeId)).json().state).toBe('FAILED');
+  });
+
+  it('§14 / INV-004: quote attempts stop at MAX_QUOTE_ATTEMPTS even with more eligible offers, then FAILED with the last quote error', async () => {
+    const h = await harness({ extraOffers: 3 }); // 5 eligible coding offers
+    h.payments.obtainRequirement.mockRejectedValue(
+      new PaymentError('QUOTE_REJECTED', 'malformed payment requirement'),
+    );
+    const res = await h.route();
+    expect(res.statusCode).toBe(502);
+    expect(res.json().error).toMatchObject({ code: 'QUOTE_REJECTED', retryable: false });
+    expect(h.payments.obtainRequirement).toHaveBeenCalledTimes(MAX_QUOTE_ATTEMPTS);
+    expect(h.signer.signExactPayment).not.toHaveBeenCalled();
+    const receipt = (await h.get(res.json().error.routeId)).json();
+    expect(receipt.state).toBe('FAILED');
+    expect(receipt.payment.status).toBe('NOT_CREATED');
+    const byElig = (e: string) =>
+      receipt.candidates.filter((c: { eligibility: string }) => c.eligibility === e).length;
+    expect(byElig('quote_rejected')).toBe(MAX_QUOTE_ATTEMPTS);
+    expect(byElig('not_quoted')).toBe(2);
+    expect(h.events.replay(res.json().error.routeId).at(-1)).toMatchObject({
+      type: 'route.failed',
+      state: 'FAILED',
+      payload: expect.objectContaining({
+        code: 'QUOTE_REJECTED',
+        requestId: expect.any(String),
+      }),
+    });
+  });
+
+  it('SEC-004: a seller timeout surfaces as a safe envelope with no internal detail', async () => {
+    const h = await harness();
+    const cause = new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    h.payments.obtainRequirement.mockRejectedValue(
+      new PaymentError('SELLER_UNAVAILABLE', 'seller did not respond', { retryable: true, cause }),
+    );
+    const res = await h.route();
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toEqual({
+      error: {
+        code: 'SELLER_UNAVAILABLE',
+        message: expect.any(String),
+        retryable: true,
+        routeId: expect.any(String),
+      },
+    });
+    expect(res.body).not.toContain('aborted');
   });
 });
 
