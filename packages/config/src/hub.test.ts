@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Wallet } from 'xrpl';
 import { XRPL_NETWORKS } from '@subbuddy/contracts';
 import {
   HUB_LISTINGS,
@@ -20,7 +21,7 @@ const buyer = {
   FACILITATOR_URL: 'https://xrpl-facilitator-testnet.t54.ai',
   SELLER_BASE_URL: 'http://localhost:4020',
   SELLER_PAYTO_ADDRESS: 'rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe',
-  AGENT_WALLET_SEED: 'sEdTM1uX8pu2do5XvTnutH6HsouMaM2',
+  AGENT_WALLET_SEED: Wallet.generate().seed as string,
   DEMO_API_KEY: 'a-long-random-demo-key-0123456789',
   HOURLY_SPEND_CAP: '1.000000',
   MANDATE_TTL_SECONDS: '300',

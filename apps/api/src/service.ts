@@ -50,6 +50,7 @@ import {
   explainSelection,
   filterEligible,
   scoreOffers,
+  type ClassificationResult,
   type ScoredCandidate,
 } from '@subbuddy/routing';
 import type { BalanceReader } from './balances.js';
@@ -210,10 +211,24 @@ export class RouteService {
     // FR-010/FR-011: the classifier falls back internally; anything escaping is a hard failure.
     let profile: TaskProfile;
     try {
-      profile = await this.d.classifier.classify({
+      const input = {
         prompt: req.prompt,
         ...(req.maxOutputTokens !== undefined ? { maxOutputTokens: req.maxOutputTokens } : {}),
-      });
+      };
+      // FR-010: model or fallback is identified in internal telemetry when the classifier reports it.
+      const detailed = this.d.classifier as Classifier & {
+        classifyDetailed?: (
+          i: typeof input,
+        ) => ClassificationResult | Promise<ClassificationResult>;
+      };
+      if (detailed.classifyDetailed) {
+        const { profile: p, ...telemetry } = await detailed.classifyDetailed(input);
+        profile = p;
+        metrics.classified(telemetry.source);
+        ctx.log.info({ classifier: telemetry }, 'classified');
+      } else {
+        profile = await detailed.classify(input);
+      }
     } catch (err) {
       ctx.log.error({ err }, 'classifier failed');
       await this.transition(ctx, 'FAILED', { reason: 'CLASSIFIER_FAILED' });

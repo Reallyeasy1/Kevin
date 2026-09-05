@@ -27,9 +27,14 @@ export class Metrics {
   settlementLatency = timing();
   providerLatency = timing();
   selectedOffer: Record<string, number> = {};
+  /** FR-010: classification source (llm | fallback). */
+  classifierSource: Record<string, number> = {};
 
   quoteRejected(reason: string): void {
     bump(this.quoteRejectedByReason, reason);
+  }
+  classified(source: string): void {
+    bump(this.classifierSource, source);
   }
   selected(offerId: string): void {
     bump(this.selectedOffer, offerId);
@@ -108,6 +113,12 @@ export class Metrics {
       'Selected-offer distribution.',
       'offer_id',
       this.selectedOffer,
+    );
+    labelled(
+      'subbuddy_classifier_source_total',
+      'Classification source (FR-010).',
+      'source',
+      this.classifierSource,
     );
     return out.join('\n') + '\n';
   }

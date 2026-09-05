@@ -14,7 +14,7 @@ export function WalletBar({
       aria-label="Wallet"
       className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-neutral-200 bg-white px-4 py-3 text-sm"
     >
-      <span className="font-semibold">Agent wallet</span>
+      <span className="font-semibold">Testnet demo agent wallet</span>
       {wallet ? (
         <>
           <code

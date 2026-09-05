@@ -33,3 +33,5 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm --filter @subbuddy/database db:migrate
       - run: pnpm test
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e

@@ -43,6 +43,8 @@ export interface HarnessOptions {
   rlusdBalance?: string;
   /** Route mandate TTL; default 300s. */
   mandateTtlSeconds?: number;
+  /** Injected clock for the service (mandate/quote expiry checks). */
+  now?: () => Date;
 }
 
 export type Harness = Awaited<ReturnType<typeof createHarness>>;
@@ -88,6 +90,7 @@ export async function createHarness(opts: HarnessOptions = {}) {
       events,
       metrics,
       sleep: async () => undefined,
+      ...(opts.now ? { now: opts.now } : {}),
       config: {
         network: NETWORK,
         asset: 'RLUSD',
