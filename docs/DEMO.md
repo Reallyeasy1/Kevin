@@ -33,7 +33,7 @@ node scripts/with-env.mjs pnpm --filter @subbuddy/web exec next dev --webpack --
 
 **Click:** nothing yet. Point at the page.
 
-**Say:** "SubBuddy is a wallet-native AI inference router. One Testnet wallet, no seller accounts, no API keys on the buyer side. The agent picks the model and pays per request over x402 on XRPL."
+**Say:** "Kevin is a wallet-native AI inference router. One Testnet wallet, no seller accounts, no API keys on the buyer side. The agent picks the model and pays per request over x402 on XRPL."
 
 **On screen:**
 

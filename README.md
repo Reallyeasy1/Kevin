@@ -1,10 +1,11 @@
-# SubBuddy
+# Kevin
+Kevin (codename SubBuddy in package names and paths).
 
 [![ci](https://github.com/Reallyeasy1/Kevin/actions/workflows/ci.yml/badge.svg)](https://github.com/Reallyeasy1/Kevin/actions/workflows/ci.yml)
 
 **One wallet. The right model for every task. Pay only when it is used.**
 
-SubBuddy is a wallet-native AI inference router built for the Singhacks 2026 Ripple challenge, "Build an AI-Native Business on XRPL". A user (or, later, an agent) submits a prompt and a maximum spend. The agent classifies the task, compares purchasable inference offers, selects one under a request-scoped mandate, pays the seller through x402 settled on XRPL Testnet, and returns the model response together with a verifiable economic receipt.
+Kevin is a wallet-native AI inference router built for the Singhacks 2026 Ripple challenge, "Build an AI-Native Business on XRPL". A user (or, later, an agent) submits a prompt and a maximum spend. The agent classifies the task, compares purchasable inference offers, selects one under a request-scoped mandate, pays the seller through x402 settled on XRPL Testnet, and returns the model response together with a verifiable economic receipt.
 
 > Testnet demo wallet, not production custody. The agent wallet is a server-controlled XRPL **Testnet** wallet holding no real-value funds. Its seed lives only in backend environment secrets. This is a prototype exception (PRD DEC-006, §15.1); production replaces it with client-side or delegated policy-gated signing (§15.4). Nothing here is a production non-custodial architecture.
 
@@ -24,7 +25,7 @@ An agent can decide which AI capability it needs, but access is normally pre-pro
 Dynamic agent decision + Static commercial access = Limited autonomy
 ```
 
-SubBuddy replaces the buyer's provider-specific commercial relationship with a request-scoped payment:
+Kevin replaces the buyer's provider-specific commercial relationship with a request-scoped payment:
 
 ```text
 Need -> Discover -> Compare -> Authorise -> Pay -> Consume -> Verify
@@ -36,17 +37,19 @@ A prompt-aware economic routing layer that selects an inference offer and purcha
 
 ## The market it draws from: XRPL AI Hub
 
-The [XRPL AI Hub](https://xrpl-ai.org/) is the live directory of x402 services on XRPL, priced in XRP or RLUSD. SubBuddy is designed to draw its offers from that market (FR-021, P1 `XrplAiHubRegistry`). The MVP routes over a curated, version-controlled registry of three demo sellers because hub listings are Mainnet services and would yield no eligible Testnet offers under `APP_ENV=hackathon`. The `ProviderRegistry` interface is the seam; the hub-backed implementation slots in without touching routing or UI.
+The [XRPL AI Hub](https://xrpl-ai.org/) is the live directory of x402 services on XRPL, priced in XRP or RLUSD. Kevin is designed to draw its offers from that market (FR-021, P1 `XrplAiHubRegistry`). The MVP routes over a curated, version-controlled registry of three demo sellers because hub listings are Mainnet services and would yield no eligible Testnet offers under `APP_ENV=hackathon`. The `ProviderRegistry` interface is the seam; the hub-backed implementation slots in without touching routing or UI.
 
 P1 is implemented as a build-time import: `packages/config/hub-offers.json` holds listings captured from the hub (endpoint, payTo, CAIP-2 network, asset, price, capabilities), and `XrplAiHubRegistry` normalises them into the FR-020 offer schema with `source: "xrpl-ai-hub"`, `hubServiceId` and `hubUrl`. Invalid records are skipped with a logged reason, only the configured network and settlement asset pass, and Mainnet listings are excluded under `APP_ENV=hackathon` (SEC-010). `MergedRegistry` is CuratedRegistry ∪ hub, deduplicated by endpoint with curated fields winning, versioned as one hash (INV-010); its `hubStatus` drives the "hub discovery unavailable" notice. Because every hub listing captured so far is Mainnet, the demo runs curated-only and shows that notice; point `hub-offers.json` at a Testnet x402 seller to watch the agent pick a hub-discovered offer.
 
 ## Architecture
 
+![Architecture overview: buyer, seller and ledger lanes with the seven numbered steps of one request](docs/architecture.png)
+
 ```mermaid
 flowchart TD
     UI["Next.js web client (apps/web)"] --> API["Fastify buyer API (apps/api)"]
     API --> CLASS["Classifier (packages/routing)"]
-    API --> REG["Curated offer registry (packages/config)"]
+    API --> REG["Offer registry: curated + XRPL AI Hub import (packages/config)"]
     API --> POLICY["Policy engine + spend cap"]
     API --> DB["PostgreSQL via Prisma (packages/database)"]
     API --> PAY["x402/XRPL buyer adapter (packages/payments)"]

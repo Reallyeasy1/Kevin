@@ -323,7 +323,7 @@ export function ReceiptDetails({
 }
 
 /** Markdown element styling for the purchased answer (models reply in markdown). react-markdown escapes raw HTML. */
-const MD: React.ComponentProps<typeof ReactMarkdown>['components'] = {
+export const MD: React.ComponentProps<typeof ReactMarkdown>['components'] = {
   h1: (p) => <h3 className="mt-4 text-base font-semibold" {...p} />,
   h2: (p) => <h3 className="mt-4 text-base font-semibold" {...p} />,
   h3: (p) => <h4 className="mt-3 text-sm font-semibold" {...p} />,
@@ -333,7 +333,7 @@ const MD: React.ComponentProps<typeof ReactMarkdown>['components'] = {
   a: (p) => <a className="underline" target="_blank" rel="noreferrer" {...p} />,
   pre: (p) => (
     <pre
-      className="mt-2 overflow-x-auto rounded bg-neutral-900 p-3 font-mono text-xs text-neutral-100"
+      className="mt-2 overflow-x-auto rounded bg-neutral-900 p-3 font-mono text-xs text-neutral-100 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-inherit [&_code]:text-xs"
       {...p}
     />
   ),
