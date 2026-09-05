@@ -3,10 +3,10 @@
 //   Workflow({ scriptPath: ".claude/workflows/chat-and-hub.js", args: { root, branch, issueRepo } })
 
 export const meta = {
-  name: 'chat-and-hub',
-  description: 'Chat UI (settings + logs, persisted sessions) and a dummy XRPL AI Hub with live discovery, in parallel; then tests, commit, push, PR',
+  name: 'dummy-hub',
+  description: 'Dummy XRPL AI Hub with live discovery in the registry and seller; then tests, commit, push, PR',
   phases: [
-    { title: 'Build', detail: 'chat UI and dummy hub in parallel (disjoint dirs)' },
+    { title: 'Build', detail: 'dummy hub + live discovery' },
     { title: 'Integrate', detail: 'typecheck, tests, e2e, commit, push branch, open PR' },
   ],
 }
@@ -53,16 +53,6 @@ const agentRetry = async (prompt, opts) => {
 phase('Build')
 const JOBS = [
   {
-    key: 'chat-ui', dirs: 'apps/web and tests/e2e',
-    task: `A shallow clone of chatbot-ui sits at ${ROOT}/../.chatbot-ui-ref for layout reference (skim its components/chat and sidebar for 2 minutes at most; copy ideas, not code). Turn the single-page router UI into a chat-first app in the style of chatbot-ui (mckaywrigley): left sidebar with the conversation list and a "New chat" button, a message pane, and a composer at the bottom. Three routes:
-- / = chat. Header keeps the existing wallet bar (address short, Testnet badge, balances) plus links to Settings and Logs, and a one-word hub indicator ("hub: live" / "hub: curated only") from GET /v1/offers hubStatus. Each user message creates ONE paid route with the existing api client (POST /v1/routes then execute, then follow SSE/poll exactly as RouterApp does today — reuse RouterApp's follow/submit logic by extracting it into a hook or module, do not rewrite it). The prompt sent = a compact transcript of this conversation ("User: ...\\nAssistant: ...\\n" for prior turns, then the new message), capped at PROMPT_MAX_CHARS (32000) by dropping the oldest turns first. The assistant bubble renders the markdown answer (react-markdown is already wired in Result.tsx) and a footer line: cost + asset, seller name, tx hash short with explorer link, and a "details" link to /logs?route=<id>. While in flight the bubble shows the existing timeline step copy (Classify, Compare, Quote, Approve, Settle, Execute). Failures reuse failureCopy so the bubble states whether money moved.
-- SESSION HISTORY (required): conversations persist in localStorage under one key: { id, title (first 40 chars of the first message), createdAt, messages: [{ role, text, routeId?, cost?, txHash?, state? }] }. On load, restore the list and the last open conversation; the sidebar switches between them; deleting a conversation is fine to skip. Because every assistant turn has a routeId, a "Reload from server" action on a message may re-fetch GET /v1/routes/:id, but that is optional.
-- /settings = the controls that used to sit above the prompt: routing mode (4 modes), max cost + asset, output limit, mandate TTL note, plus wallet details and the hub status block with reasons. Persist settings in localStorage; the chat composer reads them.
-- /logs = the existing Result/Timeline/Candidates/Receipt/PaymentEvidence components rendered for ?route=<id> (fetch GET /v1/routes/:id) and, without a route id, the existing history list (reuse the /history page's component; keep /history working as a redirect or alias).
-Keep every existing data-testid where the element still exists; move, don't delete, components. Mobile: sidebar collapses behind a button at <768px; composer stays usable at 360px; keep keyboard operability.
-Tests: update tests/e2e/*.spec.ts to the new layout (the mocked route flow now runs from the chat composer; receipt/timeline assertions go through /logs?route=<id>; the OUTCOME_UNKNOWN badge test asserts on the message footer or the /logs page). Add one spec: two messages in one conversation, assert the second POST /v1/routes body prompt contains the first exchange, then reload the page and assert both messages are still shown (session persistence). Run: pnpm --filter @subbuddy/web typecheck; npx vitest run apps/web; WEB_PORT=3277 pnpm test:e2e. Do not edit apps/api or packages/*.`,
-  },
-  {
     key: 'dummy-hub', dirs: 'apps/hub (new), packages/config, apps/seller, .env.example, root package.json scripts, docs/ARCHITECTURE.md hub row',
     task: `A previous agent left UNCOMMITTED partial work in exactly your directories (run "git status" and "git diff" first): keep what is correct, finish it, do not start over. Make FR-021 discovery LIVE so the "Hub discovery unavailable" notice goes away and hub-discovered offers appear with source "xrpl-ai-hub":
 1. apps/hub: package @subbuddy/hub, plain node:http or Fastify (already in the workspace), HUB_PORT default 4030, scripts dev (tsx) and typecheck; root script "dev:hub" via scripts/with-env.mjs. GET /health; GET /api/listings -> JSON array in the SAME record shape as packages/config/hub-offers.json, 4 Testnet listings that are purchasable in the demo: endpoint = SELLER_BASE_URL + "/v1/inference/<offerId>" with offerIds hub-greenhead-chat, hub-swarm-research, hub-clawbank-story, hub-sciphr-verify, distinct prices (e.g. 0.003, 0.009, 0.004, 0.012 RLUSD) and capability sets, payTo = SELLER_PAYTO_ADDRESS, network xrpl:1, asset RLUSD; plus ONE invalid record (network xrpl:0) to exercise the skip path. GET /listing/<id> -> tiny HTML page so hubUrl links resolve.
@@ -82,20 +72,19 @@ const reports = results.filter(Boolean)
 phase('Integrate')
 const integrate = await agent(`${COMMON}
 
-You are the integrate agent. Two agents just finished:
+You are the integrate agent. One agent just finished:
 ${reports.map(r => `- ${r.summary.slice(0, 1200)}\n  deps to install: ${r.depsToInstall.join(', ') || 'none'}\n  unfinished: ${r.unfinished.join('; ') || 'none'}`).join('\n')}
 
 Do, in order, fast:
 1. Install listed deps (pinned) if any; \`pnpm install\` in ${ROOT}.
-2. \`pnpm lint\`, \`pnpm typecheck\`, \`pnpm test\`, \`WEB_PORT=3277 pnpm test:e2e\`. Fix cross-package drift with the smallest change (likely the web Settings hub block vs the new hubStatus.source field).
+2. \`pnpm lint\`, \`pnpm typecheck\`, \`pnpm test\`, \`WEB_PORT=3277 pnpm test:e2e\`. Fix cross-package drift with the smallest change.
 3. README.md: replace the UI paragraph with three lines (chat at /, settings, logs with per-route deep links; sessions persist in the browser) and add \`pnpm dev:hub\` + HUB_URL to the run section. Two lines in docs/DEMO.md so the presenter starts the hub and types into the chat composer. Do not touch docs/EVIDENCE.md.
-4. Confirm no secret is staged. Commit on ${BRANCH} as "Chat-first UI with persisted sessions, settings and logs pages; live hub discovery via dummy XRPL AI Hub", push the branch, and open a PR to main: \`gh pr create -R ${ISSUE_REPO} --base main --head ${BRANCH}\` with a body listing what changed, how to run (ports, dev:hub, HUB_URL), test results, and "Generated with Claude Code". Do NOT merge. Report the PR URL.`,
+4. Confirm no secret is staged. Commit on ${BRANCH} as "Live hub discovery via dummy XRPL AI Hub (FR-021)", push the branch, and open a PR to main: \`gh pr create -R ${ISSUE_REPO} --base main --head ${BRANCH}\` with a body listing what changed, how to run (ports, dev:hub, HUB_URL), test results, and "Generated with Claude Code". Do NOT merge. Report the PR URL.`,
   { label: 'integrate+pr', phase: 'Integrate', schema: REPORT_SCHEMA, effort: 'medium' })
 log(`integrate: ${integrate?.testsPassing ? 'green' : 'NOT green'} — ${integrate?.summary?.slice(0, 160)}`)
 
 return {
-  chatUi: results[0]?.summary ?? null,
-  hub: results[1]?.summary ?? null,
+  hub: results[0]?.summary ?? null,
   integrated: integrate?.testsPassing ?? false,
   integrateSummary: integrate?.summary ?? null,
   unfinished: [...reports, integrate].filter(Boolean).flatMap(r => r.unfinished),
