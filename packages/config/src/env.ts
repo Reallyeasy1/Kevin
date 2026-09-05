@@ -34,6 +34,10 @@ const shared = {
   FACILITATOR_URL: z.url(),
   SELLER_BASE_URL: z.url(),
   SELLER_PAYTO_ADDRESS: XrplAddress,
+  /** FR-021 live hub discovery: base URL of an XRPL AI Hub (apps/hub in the demo). Unset = hub-offers.json import. */
+  HUB_URL: z.url().optional(),
+  /** Listen port of apps/hub (default 4030); validated here so a typo fails fast, read only by the hub. */
+  HUB_PORT: z.coerce.number().int().positive().optional(),
 };
 
 type EnvSource = Record<string, string | undefined>;

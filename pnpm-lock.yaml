@@ -63,6 +63,8 @@ importers:
         specifier: 4.5.4
         version: 4.5.4
 
+  apps/hub: {}
+
   apps/seller:
     dependencies:
       '@subbuddy/config':

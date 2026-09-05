@@ -164,7 +164,10 @@ export function createApp(opts: SellerAppOptions) {
   }
 
   function inference(req: Request, res: Response, next: NextFunction): void {
-    const offer = registry.getOffer(req.params['offerId'] ?? '');
+    // Hub-discovered offers (FR-021) are keyed `hub:<id>` in the registry but served at the listing's endpoint
+    // path, so fall back to resolving by path. Either way the offer comes from the registry, never the request.
+    const offer =
+      registry.getOffer(req.params['offerId'] ?? '') ?? registry.getOfferByPath(req.path);
     if (!offer) return fail(res, 404, 'NOT_FOUND', 'unknown offer');
     const parsed = SellerInferenceRequest.safeParse(req.body);
     if (!parsed.success) return fail(res, 400, 'VALIDATION_ERROR', 'invalid request body');

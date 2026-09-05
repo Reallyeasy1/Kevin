@@ -148,6 +148,14 @@ export class CuratedRegistry implements ProviderRegistry {
   }
 
   /**
+   * The enabled offer whose endpoint has this URL path. The seller serves hub-discovered offers (FR-021)
+   * whose registry offerId (`hub:<hubServiceId>`) differs from the path segment, so it resolves by path.
+   */
+  getOfferByPath(pathname: string): InferenceOffer | undefined {
+    return this.offers.find((o) => o.enabled && new URL(o.endpoint).pathname === pathname);
+  }
+
+  /**
    * SEC-003 / FR-020 allowlist: true only when an enabled offer carries exactly this endpoint and payTo.
    * Every outbound URL and every quote destination must pass this before use.
    */

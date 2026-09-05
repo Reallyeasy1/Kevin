@@ -8,7 +8,12 @@ import {
   decodePaymentResponseHeader,
   paymentRequiredFromWire,
 } from 'x402-xrpl';
-import { CuratedRegistry, buildCuratedOffers, loadSellerEnv } from '@subbuddy/config';
+import {
+  MergedRegistry,
+  XrplAiHubRegistry,
+  buildCuratedOffers,
+  loadSellerEnv,
+} from '@subbuddy/config';
 import { SellerInferenceResponse } from '@subbuddy/contracts';
 import { createApp, toDrops } from './app.js';
 import { mockUpstream, openAiCompatibleUpstream, type UpstreamModel } from './upstream.js';
@@ -47,12 +52,28 @@ const upstream: UpstreamModel = {
   },
 };
 
+/** A hub-discovered listing (FR-021) served by this seller, as the dummy hub publishes it. */
+const hubListing = {
+  hubServiceId: 'hub-greenhead-chat',
+  hubUrl: 'http://localhost:4030/listing/hub-greenhead-chat',
+  displayName: 'Greenhead AI Chat (Testnet)',
+  endpoint: 'http://127.0.0.1:4020/v1/inference/hub-greenhead-chat',
+  payTo: SELLER,
+  network: 'xrpl:1',
+  asset: 'RLUSD',
+  price: '0.003000',
+  capabilities: ['general_chat', 'summarization'],
+};
+
 let server: ReturnType<ReturnType<typeof createApp>['listen']>;
 let url: string;
 
 beforeAll(async () => {
   server = createApp({
-    registry: new CuratedRegistry(buildCuratedOffers(env)),
+    registry: new MergedRegistry(
+      buildCuratedOffers(env),
+      new XrplAiHubRegistry(env, [hubListing], () => {}, { source: 'live' }),
+    ),
     upstream,
     facilitator,
     logger: pino({ level: 'silent' }),
@@ -225,6 +246,29 @@ describe('POST /v1/inference/:offerId (AT-012)', () => {
     failUpstream = false;
     const replay = await post('deep-reasoning-v1', b, { [HEADER_PAYMENT_SIGNATURE]: sig });
     expect(replay.status).toBe(502);
+    expect(modelCalls).toBe(1);
+  });
+
+  it('quotes a hub-discovered offer at the listing price and runs the same upstream once paid (FR-021)', async () => {
+    const b = { requestId: 'req_hub', prompt: 'hello from the hub' };
+    const { required, req, sig } = await quote('hub-greenhead-chat', b);
+    expect(req).toMatchObject({
+      payTo: SELLER,
+      amount: '0.003000',
+      asset: RLUSD_HEX,
+      network: 'xrpl:1',
+    });
+    expect(required.resource.url).toBe(hubListing.endpoint);
+    expect(modelCalls).toBe(0);
+    const paid = await post('hub-greenhead-chat', b, { [HEADER_PAYMENT_SIGNATURE]: sig });
+    expect(paid.status).toBe(200);
+    const result = SellerInferenceResponse.parse(await paid.json());
+    // offerId is the registry id the buyer routed with (payments client checks it), modelId the hub service id.
+    expect(result).toMatchObject({
+      offerId: 'hub:hub-greenhead-chat',
+      modelId: 'hub-greenhead-chat',
+    });
+    expect(result.content).toContain('[mock hub-greenhead-chat]');
     expect(modelCalls).toBe(1);
   });
 

@@ -1,0 +1,13 @@
+{
+  "name": "@subbuddy/hub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Dummy XRPL AI Hub (stand-in for https://xrpl-ai.org/) serving Testnet listings for FR-021 live discovery. Stdlib only.",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  }
+}

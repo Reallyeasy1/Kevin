@@ -31,7 +31,7 @@ External SDK types stay inside their package. Routing, API, and UI code see only
 | Interface | Implementations | Where SDKs are allowed |
 | --- | --- | --- |
 | `Classifier` | `LlmClassifier` (Anthropic or OpenAI-compatible over `fetch`), `FallbackClassifier` (deterministic) | `packages/routing/src/classifier.ts` |
-| `ProviderRegistry` | `CuratedRegistry` (MVP); `XrplAiHubRegistry` imports `packages/config/hub-offers.json` (xrpl-ai.org listings, FR-021); `MergedRegistry` = curated ∪ hub deduped by endpoint. | `packages/config/src/registry.ts`, `packages/config/src/hub.ts` |
+| `ProviderRegistry` | `CuratedRegistry` (MVP); `XrplAiHubRegistry` validates hub listings fetched live from `HUB_URL/api/listings` at startup (apps/hub stands in for xrpl-ai.org; FR-021) or, when `HUB_URL` is unset or the fetch fails, the `packages/config/hub-offers.json` import; `MergedRegistry` = curated ∪ hub deduped by endpoint. | `packages/config/src/registry.ts`, `packages/config/src/hub.ts` |
 | `PaymentClient` | `X402PaymentClient`: `obtainRequirement`, `payAndRetry`, `resolveTransaction` | `packages/payments` (xrpl.js, x402-xrpl) |
 | `WalletSigner` | `XrplWalletSigner`: `getAddress`, `signExactPayment` | `packages/payments/src/signer.ts` |
 
@@ -127,7 +127,7 @@ Transitions are encoded in `packages/contracts/src/state-machine.ts` and tested 
 | Upstream model | `mockUpstream()` | not reached | `mockUpstream()` unless configured | real if `SELLER_UPSTREAM_PROVIDER=openai-compatible` |
 | Classifier | `FallbackClassifier` or stubbed `fetch` | not reached | `mock` (deterministic) | `anthropic` or `openai-compatible` if configured |
 | Database | `createFakeDb()` in-memory | not reached | Postgres via Docker | Postgres |
-| Offer registry (FR-021) | curated seed + `hub-offers.json` build-time import; Mainnet hub listings excluded under `APP_ENV=hackathon`, so curated-only with `hubStatus.available=false` | mocked `/v1/offers` | same as tests | same as tests |
+| Offer registry (FR-021) | curated seed + hub listings; live from `HUB_URL/api/listings` (apps/hub dummy hub on 4030: 4 Testnet listings priced by the seller, `hubStatus.source='live'`), else the `hub-offers.json` import (all Mainnet, excluded under `APP_ENV=hackathon`, so curated-only with `hubStatus.available=false` and the reason) | mocked fetch (success / timeout / invalid skip) | live dummy hub | live dummy hub (`pnpm dev:hub` + `HUB_URL`) |
 
 Rule: live Testnet tests are manual and never run on ordinary CI commits (PRD §18.3). Evidence from them is recorded by hand in [EVIDENCE.md](EVIDENCE.md).
 

@@ -14,6 +14,7 @@
     "test:e2e": "playwright test",
     "lint": "prettier --check .",
     "format": "prettier --write .",
+    "dev:hub": "node scripts/with-env.mjs pnpm --filter @subbuddy/hub dev",
     "dev:seller": "node scripts/with-env.mjs pnpm --filter @subbuddy/seller dev",
     "dev:api": "node scripts/with-env.mjs pnpm --filter @subbuddy/api dev",
     "dev:web": "node scripts/with-env.mjs pnpm --filter @subbuddy/web dev",
