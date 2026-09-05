@@ -92,8 +92,7 @@ test('lists completed routes with quoted vs settled amounts, explorer links, and
   );
 
   await page.goto('/');
-  // Linked from the main page (US-010) and the hub notice is non-blocking (FR-021).
-  await expect(page.getByTestId('hub-notice')).toContainText('Hub discovery unavailable');
+  // Linked from the main page (US-010); hub unavailability must not block routing (FR-021).
   await expect(page.getByRole('button', { name: 'Route and Run' })).toBeEnabled();
   await page.getByRole('link', { name: 'History' }).click();
   await expect(page).toHaveURL(/\/history$/);

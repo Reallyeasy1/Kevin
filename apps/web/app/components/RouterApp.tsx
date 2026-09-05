@@ -97,7 +97,7 @@ export function RouterApp() {
       );
   }, []);
 
-  // FR-021: source labels need each offer's hub listing URL; the notice needs hubStatus. Best effort only.
+  // FR-021: source labels need each offer's hub listing URL. Best effort only.
   useEffect(() => {
     api
       .offers()
@@ -109,7 +109,6 @@ export function RouterApp() {
     for (const o of offers?.offers ?? []) if (o.hubUrl) m[o.offerId] = o.hubUrl;
     return m;
   }, [offers]);
-  const hubUnavailable = offers?.hubStatus?.available === false;
 
   // History view (US-010): /?route=<id> renders a completed route read-only.
   useEffect(() => {
@@ -276,15 +275,6 @@ export function RouterApp() {
   return (
     <div className="flex flex-col gap-4">
       <WalletBar wallet={wallet} error={walletError} />
-      {hubUnavailable && (
-        <p
-          role="status"
-          data-testid="hub-notice"
-          className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900"
-        >
-          Hub discovery unavailable: routing over the curated registry only (FR-021).
-        </p>
-      )}
       <Composer asset={asset} disabled={busy} onSubmit={(req) => void submit(req)} />
       <Timeline
         ui={ui}
