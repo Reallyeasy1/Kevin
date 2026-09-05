@@ -62,6 +62,7 @@ describe('failureCopy (PRD §13.4, FR-081)', () => {
     expect(paymentStatusLabel('OUTCOME_UNKNOWN', false)).toBe('Pending');
     expect(paymentStatusLabel('SETTLED', false)).toBe('Validated');
     expect(paymentStatusLabel('VALIDATED_FAILED', true)).toBe('Failed');
+    expect(paymentStatusLabel('POLICY_REJECTED', false)).toBe('Not attempted');
   });
 });
 

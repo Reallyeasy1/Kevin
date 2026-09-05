@@ -63,7 +63,9 @@ export function PaymentEvidence({ evidence }: { evidence: EvidenceView }) {
       ? 'bg-emerald-100 text-emerald-800'
       : evidence.status === 'Failed'
         ? 'bg-red-100 text-red-800'
-        : 'bg-amber-100 text-amber-800';
+        : evidence.status === 'Not attempted'
+          ? 'bg-slate-100 text-slate-700'
+          : 'bg-amber-100 text-amber-800';
   async function copy() {
     if (!evidence.hash) return;
     try {

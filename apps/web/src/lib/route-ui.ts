@@ -180,8 +180,9 @@ export function failureCopy(state: RouteState, apiMessage?: string | null): Fail
 export function paymentStatusLabel(
   status: PaymentState | null,
   seenValidated: boolean,
-): 'Validated' | 'Pending' | 'Failed' {
+): 'Validated' | 'Pending' | 'Failed' | 'Not attempted' {
   if (status === 'SETTLED') return 'Validated';
+  if (status === 'POLICY_REJECTED') return 'Not attempted';
   if (status === 'VALIDATED_FAILED') return 'Failed';
   if (status === null && seenValidated) return 'Validated';
   return 'Pending';
@@ -203,7 +204,7 @@ export interface SelectedView {
 }
 
 export interface EvidenceView {
-  status: 'Validated' | 'Pending' | 'Failed';
+  status: 'Validated' | 'Pending' | 'Failed' | 'Not attempted';
   hash: string | null;
   explorerUrl: string | null;
   amount: string | null;
