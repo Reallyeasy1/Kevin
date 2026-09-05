@@ -9,11 +9,13 @@ export const meta = {
   phases: [
     { title: 'Gaps', detail: 'six agents in disjoint dirs: tests/, scripts/, packages/config, apps/api, apps/web, fixups' },
     { title: 'Integrate', detail: 'install missing deps, typecheck, test, commit, push' },
-    { title: 'Audit', detail: 'PRD §21 definition-of-done audit; fix what is auto-fixable' },
+    { title: 'Issues', detail: 'four agents verify and close solved GitHub issues by area' },
+    { title: 'Audit', detail: 'CI green check, PRD §21 definition-of-done audit; fix what is auto-fixable' },
   ],
 }
 
 const REPO = args.repo
+const ISSUE_REPO = args.issueRepo ?? 'Reallyeasy1/Kevin'
 const ROOT = args.root
 const PRD = args.prdPath
 const ISSUES = args.issues ?? []
@@ -119,8 +121,58 @@ Report what you fixed and whether typecheck and tests are green.`,
   { label: 'integrate', phase: 'Integrate', schema: REPORT_SCHEMA })
 log(`integrated: tests ${integrate?.testsPassing ? 'green' : 'NOT green'}`)
 
+// ---------------- Issues (parallel by area group) ----------------
+phase('Issues')
+const ISSUES_SCHEMA = {
+  type: 'object',
+  properties: {
+    closed: { type: 'array', items: { type: 'number' } },
+    open: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { number: { type: 'number' }, reason: { type: 'string' } },
+        required: ['number', 'reason'],
+      },
+    },
+  },
+  required: ['closed', 'open'],
+}
+const ISSUE_GROUPS = [
+  { key: 'foundation', areas: ['infra', 'contracts', 'config', 'database'] },
+  { key: 'engine', areas: ['routing', 'payments', 'seller'] },
+  { key: 'api+tests', areas: ['api', 'tests'] },
+  { key: 'web+docs', areas: ['web', 'docs'] },
+]
+const issueResults = await parallel(ISSUE_GROUPS.map(g => () => {
+  const list = ISSUES.filter(i => g.areas.includes(i.area))
+  if (!list.length) return Promise.resolve({ closed: [], open: [] })
+  return agentRetry(`${COMMON}
+
+You are the issue-closing agent for areas ${g.areas.join(', ')} on GitHub repo ${ISSUE_REPO} (use the gh CLI; it is authenticated). Do NOT edit any source file. For EACH issue below, read its body with \`gh issue view <n> -R ${ISSUE_REPO}\`, then look for concrete evidence in the repository at HEAD that the acceptance criteria are met: the implementing file(s) and a test that exercises it (grep for the requirement id, the feature name, the state or error code). Use \`git log --oneline -20\` to find the commit that referenced the issue.
+
+Decide:
+- SOLVED → \`gh issue close <n> -R ${ISSUE_REPO} -r completed -c "<one paragraph: what implements it (file paths), which test covers it, and the commit sha>"\`.
+- PARTIALLY solved or NOT solved → leave open and \`gh issue comment <n> -R ${ISSUE_REPO} -b "<what exists, what is missing, one line>"\`. Issues that require a human or live Testnet (recorded tx hash, demo rehearsal, feedback form, funded wallet) stay open with a comment saying so.
+- Explicitly out of MVP scope per the PRD (P2, or P1 the PRD says to cut) → close as \`-r "not planned"\` with a one-line comment citing the PRD section.
+Be honest: closing an unsolved issue is worse than leaving a solved one open. Never close an issue based only on a commit message mentioning it.
+
+Issues:
+${list.map(i => `- #${i.number} ${i.title} (${i.requirementIds.join(', ')})`).join('\n')}`,
+    { label: `issues:${g.key}`, phase: 'Issues', schema: ISSUES_SCHEMA, effort: 'medium' })
+}))
+const closed = issueResults.filter(Boolean).flatMap(r => r.closed)
+const stillOpen = issueResults.filter(Boolean).flatMap(r => r.open)
+log(`issues: ${closed.length} closed, ${stillOpen.length} left open`)
+
 // ---------------- Audit ----------------
 phase('Audit')
+const ci = await agent(`${COMMON}
+
+You are the CI agent. GitHub Actions workflow "ci" runs on every push to main in ${ISSUE_REPO}. Run \`gh run list -R ${ISSUE_REPO} --limit 1 --json databaseId,status,conclusion,headSha\` and \`gh run watch <id> -R ${ISSUE_REPO} --exit-status\` (it may still be running for the integrate commit; wait for it). If it fails, read \`gh run view <id> -R ${ISSUE_REPO} --log-failed\`, fix the ROOT CAUSE in the repo (CI runs on Linux with a fresh clone: usually a missing generate/build step, a gitignored artifact, a case-sensitive path, or a lockfile mismatch — never a skip or an || true), verify the same command locally, commit as "Fix CI: <cause>", push, and watch the new run. At most two rounds. testsPassing in your report means "the latest CI run on main is green".`,
+  { label: 'ci-verify', phase: 'Audit', schema: REPORT_SCHEMA, effort: 'medium' })
+log(`ci: ${ci?.testsPassing ? 'green' : 'NOT green'} — ${ci?.summary?.slice(0, 160) ?? 'no report'}`)
+
 const AUDIT_SCHEMA = {
   type: 'object',
   properties: {
@@ -164,8 +216,11 @@ ${fixable.map(f => `- ${f.criterion}\n  evidence: ${f.evidence}\n  fix: ${f.fix}
 return {
   gaps: JOBS.map((j, i) => ({ key: j.key, done: !!results[i], summary: results[i]?.summary ?? null })),
   integrated: integrate?.testsPassing ?? false,
+  issuesClosed: closed,
+  issuesOpen: stillOpen,
+  ciGreen: ci?.testsPassing ?? false,
   audit: audit?.items ?? [],
   fixed: fix?.summary ?? null,
   humanTodo: manual.map(m => `${m.criterion}: ${m.fix}`),
-  unfinished: [...reports, integrate, fix].filter(Boolean).flatMap(r => r.unfinished),
+  unfinished: [...reports, integrate, ci, fix].filter(Boolean).flatMap(r => r.unfinished),
 }
