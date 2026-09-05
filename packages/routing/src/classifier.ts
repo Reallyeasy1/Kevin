@@ -76,7 +76,7 @@ export class FallbackClassifier implements Classifier {
 export type CompleteFn = (system: string, user: string) => Promise<string>;
 
 export const CLASSIFIER_SYSTEM_PROMPT = `Classify the user's prompt for an inference router. Reply with ONLY a JSON object, no prose, shaped exactly:
-{"taskType": one of ${JSON.stringify(TASK_TYPES)}, "reasoningLevel": "low"|"medium"|"high", "inputModality": "text", "estimatedInputTokens": integer, "requiredContextTokens": integer, "toolCallingRequired": boolean, "confidence": number 0..1}`;
+{"taskType": one of ${JSON.stringify(TASK_TYPES)}, "reasoningLevel": "low"|"medium"|"high", "inputModality": "text", "estimatedInputTokens": integer >= 0, "requiredContextTokens": positive integer (context the model needs for prompt plus answer; never 0, use 4096 if unsure), "toolCallingRequired": boolean, "confidence": number 0..1}`;
 
 export class LlmClassifier implements Classifier {
   constructor(
@@ -92,7 +92,11 @@ export class LlmClassifier implements Classifier {
         this.complete(CLASSIFIER_SYSTEM_PROMPT, input.prompt),
         this.timeoutMs,
       );
-      const parsed = TaskProfileSchema.safeParse(JSON.parse(extractJson(raw)));
+      const obj = JSON.parse(extractJson(raw)) as Record<string, unknown>;
+      // ponytail: models sometimes emit 0 for context size; a sizing slip should not discard a good classification.
+      if (typeof obj['requiredContextTokens'] === 'number' && obj['requiredContextTokens'] <= 0)
+        obj['requiredContextTokens'] = FALLBACK_TASK_PROFILE.requiredContextTokens;
+      const parsed = TaskProfileSchema.safeParse(obj);
       if (parsed.success) return { profile: parsed.data, source: 'llm', model: this.model };
       fallbackReason = `schema: ${parsed.error.issues.map((i) => i.path.join('.') + ' ' + i.message).join('; ')}`;
     } catch (err) {

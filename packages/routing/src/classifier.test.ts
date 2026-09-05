@@ -49,6 +49,16 @@ describe('LlmClassifier (FR-010, AT-008)', () => {
     expect(r).toEqual({ profile: good, source: 'llm', model: 'm' });
   });
 
+  it('keeps the LLM classification when the model returns requiredContextTokens 0', async () => {
+    const c = new LlmClassifier(
+      async () => JSON.stringify({ ...good, requiredContextTokens: 0 }),
+      'm',
+    );
+    const r = await c.classifyDetailed({ prompt: 'anything' });
+    expect(r.source).toBe('llm');
+    expect(r.profile.requiredContextTokens).toBe(4096);
+  });
+
   it('falls back when the model invents a task type', async () => {
     const c = new LlmClassifier(async () => JSON.stringify({ ...good, taskType: 'vision' }), 'm');
     const r = await c.classifyDetailed({ prompt: 'hello there' });
