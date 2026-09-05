@@ -1,10 +1,14 @@
+import { Suspense } from 'react';
+import { RouterApp } from './components/RouterApp';
+
 export default function HomePage() {
   return (
-    <main className="mx-auto max-w-3xl p-6">
-      <h1 className="text-3xl font-semibold">SubBuddy</h1>
-      <p className="mt-2 text-neutral-600">
-        Wallet-native AI inference router. Demo wallet on XRPL Testnet.
-      </p>
+    <main className="mx-auto w-full max-w-4xl p-3 sm:p-6">
+      <h1 className="sr-only">SubBuddy inference router</h1>
+      {/* useSearchParams needs a Suspense boundary for static rendering. */}
+      <Suspense fallback={<p className="text-sm text-neutral-500">Loading…</p>}>
+        <RouterApp />
+      </Suspense>
     </main>
   );
 }
