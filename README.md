@@ -89,7 +89,8 @@ Prerequisites: Node 22, pnpm 11, Docker (for Postgres).
 ```bash
 pnpm install
 cp .env.example .env            # then fill in the values below
-pnpm db:up                      # docker compose up -d postgres
+# The dev:* and smoke:testnet scripts load .env automatically (scripts/with-env.mjs); shell variables take precedence.
+pnpm db:up                      # docker compose up -d postgres (set POSTGRES_PORT in .env if 5432 is taken; keep DATABASE_URL in sync)
 pnpm --filter @subbuddy/database generate
 pnpm --filter @subbuddy/database db:migrate
 ```
@@ -136,7 +137,7 @@ Three processes, three terminals. Buyer and seller always talk over HTTP; the se
 ```bash
 pnpm dev:seller   # http://localhost:4020, x402 gate + facilitator
 pnpm dev:api      # http://localhost:4010, buyer API
-pnpm dev:web      # http://localhost:3000, UI
+pnpm dev:web      # http://localhost:3000, UI (port busy? pnpm --filter @subbuddy/web exec next dev --webpack --port 3100)
 ```
 
 With `CLASSIFIER_PROVIDER=mock` and `SELLER_UPSTREAM_PROVIDER=mock` (the defaults) the flow runs end to end with a deterministic classifier and a canned model answer, while the payment still goes through the real facilitator and XRPL Testnet. Set `SELLER_UPSTREAM_PROVIDER=openai-compatible` plus base URL and key on the seller side for real inference; set `CLASSIFIER_PROVIDER=anthropic` plus a key on the buyer side for LLM classification.
