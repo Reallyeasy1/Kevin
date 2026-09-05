@@ -50,6 +50,14 @@ const REPORT_SCHEMA = {
   required: ['summary', 'files', 'depsToInstall', 'testsPassing', 'unfinished'],
 }
 
+// ponytail: agent() resolves null when a spawn dies (API error); one retry beats silently dropping a whole package.
+const agentRetry = async (prompt, opts) => {
+  const r = await agent(prompt, opts)
+  if (r) return r
+  log(`${opts.label}: agent failed to start or died, retrying once`)
+  return agent(prompt, { ...opts, label: `${opts.label}:retry` })
+}
+
 // ---------------- Scaffold ----------------
 phase('Scaffold')
 const scaffold = await agent(`${COMMON}
@@ -100,11 +108,13 @@ Tests with mocked xrpl Client and a fake seller/facilitator: quote validation ma
   },
 ]
 
-const pkgReports = (await parallel(PACKAGE_JOBS.map(j => () =>
-  agent(`${COMMON}\n\nYou own ${j.dirs}. ${j.task}\n\nIssues this addresses:\n${issueList(...j.areas)}`,
+const pkgResults = await parallel(PACKAGE_JOBS.map(j => () =>
+  agentRetry(`${COMMON}\n\nYou own ${j.dirs}. ${j.task}\n\nIssues this addresses:\n${issueList(...j.areas)}`,
     { label: `pkg:${j.key}`, phase: 'Packages', schema: REPORT_SCHEMA })
-))).filter(Boolean)
-pkgReports.forEach((r, i) => log(`${PACKAGE_JOBS[i]?.key}: ${r.summary}`))
+))
+pkgResults.forEach((r, i) => { if (!r) log(`DROPPED: ${PACKAGE_JOBS[i].key} failed twice; integrate will see it as missing`) })
+const pkgReports = pkgResults.filter(Boolean)
+pkgResults.forEach((r, i) => r && log(`${PACKAGE_JOBS[i].key}: ${r.summary}`))
 
 const integratePrompt = (stage, reports, areas) => `${COMMON}
 
@@ -139,11 +149,13 @@ const APP_JOBS = [
   },
 ]
 
-const appReports = (await parallel(APP_JOBS.map(j => () =>
-  agent(`${COMMON}\n\nYou own ${j.dirs}. ${j.task}\n\nIssues this addresses:\n${issueList(...j.areas)}`,
+const appResults = await parallel(APP_JOBS.map(j => () =>
+  agentRetry(`${COMMON}\n\nYou own ${j.dirs}. ${j.task}\n\nIssues this addresses:\n${issueList(...j.areas)}`,
     { label: `app:${j.key}`, phase: 'Apps', schema: REPORT_SCHEMA })
-))).filter(Boolean)
-appReports.forEach((r, i) => log(`${APP_JOBS[i]?.key}: ${r.summary}`))
+))
+appResults.forEach((r, i) => { if (!r) log(`DROPPED: ${APP_JOBS[i].key} failed twice`) })
+const appReports = appResults.filter(Boolean)
+appResults.forEach((r, i) => r && log(`${APP_JOBS[i].key}: ${r.summary}`))
 
 const appIntegrate = await agent(integratePrompt('Add seller, buyer API, and web app', appReports, APP_JOBS.flatMap(j => j.areas)),
   { label: 'integrate:apps', phase: 'Apps', schema: REPORT_SCHEMA })
