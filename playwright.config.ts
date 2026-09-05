@@ -9,7 +9,7 @@ const baseURL = `http://localhost:${port}`;
 export default defineConfig({
   testDir: './tests/e2e',
   reporter: 'list',
-  use: { baseURL },
+  use: { baseURL, trace: 'retain-on-failure' },
   webServer: {
     command: `pnpm --filter @subbuddy/web exec next dev --webpack --port ${port}`,
     // Probing `/` (not /health) makes next dev compile the home page before the first test navigates to it.
