@@ -7,3 +7,4 @@ ripple
 .claude
 PRD_SPECS.md
 *.md
+packages/database/src/generated/

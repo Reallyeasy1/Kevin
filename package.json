@@ -9,8 +9,8 @@
   },
   "scripts": {
     "build": "pnpm -r run build",
-    "typecheck": "pnpm -r run typecheck",
-    "test": "vitest run",
+    "typecheck": "pnpm generate && pnpm -r run typecheck",
+    "test": "pnpm generate && vitest run",
     "test:e2e": "playwright test",
     "lint": "prettier --check .",
     "format": "prettier --write .",
@@ -18,7 +18,9 @@
     "dev:api": "pnpm --filter @subbuddy/api dev",
     "dev:web": "pnpm --filter @subbuddy/web dev",
     "db:up": "docker compose up -d postgres",
-    "db:down": "docker compose down"
+    "db:down": "docker compose down",
+    "postinstall": "pnpm generate",
+    "generate": "pnpm --filter @subbuddy/database generate"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
